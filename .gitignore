@@ -54,3 +54,6 @@ coverage.out
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated quality metrics
+metrics/generated/

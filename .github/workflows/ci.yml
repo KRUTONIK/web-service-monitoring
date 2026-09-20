@@ -221,3 +221,148 @@ jobs:
                 --verbose
             fi
           fi
+
+  metrics:
+    name: Quality metrics
+    runs-on: ubuntu-latest
+
+    needs:
+      - commitlint
+      - go-quality
+      - go-lint
+      - web-quality
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache-dependency-path: |
+            services/api/go.mod
+            services/checker/go.mod
+            services/notification/go.mod
+
+      - name: Install complexity analyzer
+        run: go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+
+      - name: Collect test metrics
+        shell: bash
+        run: |
+          mkdir -p metrics/generated
+
+          set +e
+
+          go test -json \
+            -coverprofile=metrics/generated/api.cover \
+            ./services/api/... \
+            > metrics/generated/api-tests.json
+          API_EXIT=$?
+
+          go test -json \
+            -coverprofile=metrics/generated/checker.cover \
+            ./services/checker/... \
+            > metrics/generated/checker-tests.json
+          CHECKER_EXIT=$?
+
+          go test -json \
+            -coverprofile=metrics/generated/notification.cover \
+            ./services/notification/... \
+            > metrics/generated/notification-tests.json
+          NOTIFICATION_EXIT=$?
+
+          set -e
+
+          PASSED=$(jq -s \
+            '[.[] | select(.Test != null and .Action == "pass")] | length' \
+            metrics/generated/*-tests.json)
+
+          FAILED=$(jq -s \
+            '[.[] | select(.Test != null and .Action == "fail")] | length' \
+            metrics/generated/*-tests.json)
+
+          TEST_TIME=$(jq -s \
+            '[.[] |
+              select(.Test != null and
+              (.Action == "pass" or .Action == "fail")) |
+              (.Elapsed // 0)] |
+              add // 0' \
+            metrics/generated/*-tests.json)
+
+          API_COVERAGE=$(go tool cover \
+            -func=metrics/generated/api.cover |
+            awk '/^total:/ {gsub("%", "", $3); print $3}')
+
+          CHECKER_COVERAGE=$(go tool cover \
+            -func=metrics/generated/checker.cover |
+            awk '/^total:/ {gsub("%", "", $3); print $3}')
+
+          NOTIFICATION_COVERAGE=$(go tool cover \
+            -func=metrics/generated/notification.cover |
+            awk '/^total:/ {gsub("%", "", $3); print $3}')
+
+          COVERAGE=$(awk \
+            "BEGIN {
+              printf \"%.2f\",
+              ($API_COVERAGE +
+               $CHECKER_COVERAGE +
+               $NOTIFICATION_COVERAGE) / 3
+            }")
+
+          MAX_COMPLEXITY=$(gocyclo services |
+            awk '
+              NR == 1 { max = $1 }
+              $1 > max { max = $1 }
+              END { print max + 0 }
+            ')
+
+          COMMIT_SIZE=$(git show \
+            --numstat \
+            --format="" \
+            HEAD |
+            awk '
+              $1 ~ /^[0-9]+$/ { added += $1 }
+              $2 ~ /^[0-9]+$/ { deleted += $2 }
+              END { print added + deleted }
+            ')
+
+          cat > metrics/generated/metrics.json << EOF
+          {
+            "commit": "${GITHUB_SHA}",
+            "coverage_percent": ${COVERAGE},
+            "tests_passed": ${PASSED},
+            "tests_failed": ${FAILED},
+            "test_duration_seconds": ${TEST_TIME},
+            "max_cyclomatic_complexity": ${MAX_COMPLEXITY},
+            "commit_size_lines": ${COMMIT_SIZE}
+          }
+          EOF
+
+          {
+            echo "## Quality metrics"
+            echo ""
+            echo "| Metric | Value |"
+            echo "|---|---:|"
+            echo "| Test coverage | ${COVERAGE}% |"
+            echo "| Passed tests | ${PASSED} |"
+            echo "| Failed tests | ${FAILED} |"
+            echo "| Test duration | ${TEST_TIME} s |"
+            echo "| Max cyclomatic complexity | ${MAX_COMPLEXITY} |"
+            echo "| Commit size | ${COMMIT_SIZE} lines |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$API_EXIT" -ne 0 ] ||
+             [ "$CHECKER_EXIT" -ne 0 ] ||
+             [ "$NOTIFICATION_EXIT" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Upload quality metrics
+        uses: actions/upload-artifact@v6
+        with:
+          name: quality-metrics
+          path: metrics/generated/
