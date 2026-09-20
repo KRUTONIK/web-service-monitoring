@@ -23,6 +23,10 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.work
+          cache-dependency-path: |
+            services/api/go.mod
+            services/checker/go.mod
+            services/notification/go.mod
 
       - name: Check formatting
         run: |
@@ -92,6 +96,7 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.work
+          cache-dependency-path: ${{ matrix.service }}/go.mod
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
