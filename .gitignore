@@ -30,3 +30,28 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Node.js
+node_modules/
+dist/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Coverage and test reports
+coverage/
+coverage.out
+*.coverprofile
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
