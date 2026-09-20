@@ -123,3 +123,59 @@ jobs:
         with:
           version: v2.13.2
           working-directory: ${{ matrix.service }}
+
+  build:
+    name: Build application
+    runs-on: ubuntu-latest
+
+    needs:
+      - go-quality
+      - go-lint
+      - web-quality
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache-dependency-path: |
+            services/api/go.mod
+            services/checker/go.mod
+            services/notification/go.mod
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Web UI dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build Go services
+        run: |
+          mkdir -p build/services
+
+          go build -o build/services/api ./services/api
+          go build -o build/services/checker ./services/checker
+          go build -o build/services/notification ./services/notification
+
+      - name: Build Web UI
+        working-directory: web
+        run: npm run build
+
+      - name: Prepare Web UI artifact
+        run: |
+          mkdir -p build/web
+          cp -r web/dist/. build/web/
+
+      - name: Upload application build
+        uses: actions/upload-artifact@v6
+        with:
+          name: application-build
+          path: build/
