@@ -44,11 +44,31 @@ jobs:
           go vet ./services/checker/...
           go vet ./services/notification/...
 
-      - name: Run Go tests
+      - name: Run Go tests with coverage
         run: |
-          go test ./services/api/...
-          go test ./services/checker/...
-          go test ./services/notification/...
+          go test -coverprofile=services/api/coverage.out ./services/api/...
+          go test -coverprofile=services/checker/coverage.out ./services/checker/...
+          go test -coverprofile=services/notification/coverage.out ./services/notification/...
+
+      - name: Show coverage
+        run: |
+          echo "API Service:"
+          go tool cover -func=services/api/coverage.out
+
+          echo "Checker Service:"
+          go tool cover -func=services/checker/coverage.out
+
+          echo "Notification Service:"
+          go tool cover -func=services/notification/coverage.out
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v6
+        with:
+          name: go-coverage
+          path: |
+            services/api/coverage.out
+            services/checker/coverage.out
+            services/notification/coverage.out
 
   web-quality:
     name: Web quality
