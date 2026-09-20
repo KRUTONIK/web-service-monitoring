@@ -258,32 +258,23 @@ jobs:
           set +e
 
           go test -json \
-            -coverprofile=metrics/generated/api.cover \
+            -coverprofile=metrics/generated/coverage.out \
             ./services/api/... \
-            > metrics/generated/api-tests.json
-          API_EXIT=$?
-
-          go test -json \
-            -coverprofile=metrics/generated/checker.cover \
             ./services/checker/... \
-            > metrics/generated/checker-tests.json
-          CHECKER_EXIT=$?
-
-          go test -json \
-            -coverprofile=metrics/generated/notification.cover \
             ./services/notification/... \
-            > metrics/generated/notification-tests.json
-          NOTIFICATION_EXIT=$?
+            > metrics/generated/tests.json
+
+          TEST_EXIT=$?
 
           set -e
 
           PASSED=$(jq -s \
             '[.[] | select(.Test != null and .Action == "pass")] | length' \
-            metrics/generated/*-tests.json)
+            metrics/generated/tests.json)
 
           FAILED=$(jq -s \
             '[.[] | select(.Test != null and .Action == "fail")] | length' \
-            metrics/generated/*-tests.json)
+            metrics/generated/tests.json)
 
           TEST_TIME=$(jq -s \
             '[.[] |
@@ -291,27 +282,11 @@ jobs:
               (.Action == "pass" or .Action == "fail")) |
               (.Elapsed // 0)] |
               add // 0' \
-            metrics/generated/*-tests.json)
+            metrics/generated/tests.json)
 
-          API_COVERAGE=$(go tool cover \
-            -func=metrics/generated/api.cover |
+          COVERAGE=$(go tool cover \
+            -func=metrics/generated/coverage.out |
             awk '/^total:/ {gsub("%", "", $3); print $3}')
-
-          CHECKER_COVERAGE=$(go tool cover \
-            -func=metrics/generated/checker.cover |
-            awk '/^total:/ {gsub("%", "", $3); print $3}')
-
-          NOTIFICATION_COVERAGE=$(go tool cover \
-            -func=metrics/generated/notification.cover |
-            awk '/^total:/ {gsub("%", "", $3); print $3}')
-
-          COVERAGE=$(awk \
-            "BEGIN {
-              printf \"%.2f\",
-              ($API_COVERAGE +
-               $CHECKER_COVERAGE +
-               $NOTIFICATION_COVERAGE) / 3
-            }")
 
           MAX_COMPLEXITY=$(gocyclo services |
             awk '
@@ -355,13 +330,12 @@ jobs:
             echo "| Commit size | ${COMMIT_SIZE} lines |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [ "$API_EXIT" -ne 0 ] ||
-             [ "$CHECKER_EXIT" -ne 0 ] ||
-             [ "$NOTIFICATION_EXIT" -ne 0 ]; then
-            exit 1
+          if [ "$TEST_EXIT" -ne 0 ]; then
+            exit "$TEST_EXIT"
           fi
-
+        
       - name: Upload quality metrics
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: quality-metrics
