@@ -21,7 +21,6 @@ profile.cov
 # vendor/
 
 # Go workspace file
-go.work
 go.work.sum
 
 # env file
@@ -55,3 +54,6 @@ coverage.out
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated quality metrics
+metrics/generated/

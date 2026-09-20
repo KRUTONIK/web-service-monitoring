@@ -1,0 +1,27 @@
+{
+  "name": "web-service-monitoring",
+  "version": "1.0.0",
+  "description": "Microservice-based system for monitoring web-service availability and performance.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KRUTONIK/web-service-monitoring.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/KRUTONIK/web-service-monitoring/issues"
+  },
+  "homepage": "https://github.com/KRUTONIK/web-service-monitoring#readme",
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3"
+  }
+}
