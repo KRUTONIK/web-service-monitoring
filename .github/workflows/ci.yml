@@ -166,6 +166,18 @@ jobs:
           version: v2.13.2
           working-directory: ${{ matrix.service }}
 
+  integration-tests:
+    name: Integration tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run infrastructure integration tests
+        shell: bash
+        run: bash scripts/integration-test.sh
+
   build:
     name: Build application
     runs-on: ubuntu-latest
@@ -175,6 +187,7 @@ jobs:
       - go-quality
       - go-lint
       - web-quality
+      - integration-tests
 
     steps:
       - name: Checkout repository
