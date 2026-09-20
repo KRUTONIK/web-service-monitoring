@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.1 — Infrastructure Integration Tests
+
+### Added
+
+- Docker Compose infrastructure for PostgreSQL, RabbitMQ and InfluxDB
+- infrastructure health checks
+- automated infrastructure integration tests
+- integration tests as a required CI stage
+
 ## v0.1.0 — Infrastructure
 
 Initial infrastructure release.
