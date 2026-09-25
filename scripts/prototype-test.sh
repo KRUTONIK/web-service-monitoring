@@ -42,22 +42,12 @@ for i in {1..60}; do
         --format='{{.State.Status}}' \
         monitoring-checker 2>/dev/null || true)
 
-    if [ "$status" = "exited" ]; then
-        exit_code=$(docker inspect \
-            --format='{{.State.ExitCode}}' \
-            monitoring-checker)
-
-        if [ "$exit_code" -ne 0 ]; then
-            echo "Checker Service exited with code $exit_code"
-            "${COMPOSE[@]}" logs checker
-            exit 1
-        fi
-
+    if [ "$status" = "running" ]; then
         break
     fi
 
     if [ "$i" -eq 60 ]; then
-        echo "Checker Service did not finish"
+        echo "Checker Service did not start"
         "${COMPOSE[@]}" logs checker
         exit 1
     fi
@@ -66,7 +56,20 @@ for i in {1..60}; do
 done
 
 echo "Checking API result..."
-result=$(curl --fail --silent http://localhost:8080/api/checks/latest)
+for i in {1..60}; do
+    if result=$(curl --fail --silent http://localhost:8080/api/checks/latest); then
+        break
+    fi
+
+    if [ "$i" -eq 60 ]; then
+        echo "Monitoring result did not become available"
+        "${COMPOSE[@]}" logs api checker
+        exit 1
+    fi
+
+    sleep 2
+done
+
 echo "$result" | jq -e '
     .service_url == "https://example.com" and
     .available == true and
