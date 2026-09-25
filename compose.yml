@@ -1,0 +1,61 @@
+include:
+  - path: deploy/docker-compose.infrastructure.yml
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    container_name: monitoring-api
+    environment:
+      API_LISTEN_ADDRESS: ":8080"
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_ORG: monitoring
+      INFLUXDB_BUCKET: monitoring
+      INFLUXDB_TOKEN: monitoring-test-token
+    ports:
+      - "8080:8080"
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "-q",
+          "--spider",
+          "http://localhost:8080/health"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  checker:
+    build:
+      context: .
+      dockerfile: services/checker/Dockerfile
+    container_name: monitoring-checker
+    environment:
+      MONITOR_URL: https://example.com
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_ORG: monitoring
+      INFLUXDB_BUCKET: monitoring
+      INFLUXDB_TOKEN: monitoring-test-token
+    depends_on:
+      influxdb:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8080
+    container_name: monitoring-web
+    ports:
+      - "5173:80"
+    depends_on:
+      api:
+        condition: service_healthy
