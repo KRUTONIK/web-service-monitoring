@@ -6,7 +6,7 @@ import (
 	"net"
 	"net/http"
 
-	configurationv1 "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/configuration/v1"
+	configurationv1 "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/configuration/v1"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/config"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/grpcapi"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/httpapi"

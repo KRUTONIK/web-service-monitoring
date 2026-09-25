@@ -5,7 +5,7 @@ import (
 	"net"
 	"net/http"
 
-	metricsv1 "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/metrics/v1"
+	metricsv1 "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/metrics/v1"
 	"github.com/KRUTONIK/web-service-monitoring/services/metrics/internal/config"
 	"github.com/KRUTONIK/web-service-monitoring/services/metrics/internal/grpcapi"
 	"github.com/KRUTONIK/web-service-monitoring/services/metrics/internal/storage"

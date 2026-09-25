@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	metricsv1 "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/metrics/v1"
+	metricsv1 "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/metrics/v1"
 	"github.com/KRUTONIK/web-service-monitoring/services/metrics/internal/metric"
 )
 

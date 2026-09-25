@@ -4,7 +4,7 @@ package monitoring.configuration.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/configuration/v1;configurationv1";
+option go_package = "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/configuration/v1;configurationv1";
 
 service ConfigurationService {
   rpc GetSnapshot(GetSnapshotRequest) returns (GetSnapshotResponse);

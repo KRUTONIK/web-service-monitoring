@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: configuration/v1/configuration.proto
+// source: monitoring/configuration/v1/configuration.proto
 
 package configurationv1
 
@@ -30,7 +30,7 @@ type GetSnapshotRequest struct {
 
 func (x *GetSnapshotRequest) Reset() {
 	*x = GetSnapshotRequest{}
-	mi := &file_configuration_v1_configuration_proto_msgTypes[0]
+	mi := &file_monitoring_configuration_v1_configuration_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42,7 +42,7 @@ func (x *GetSnapshotRequest) String() string {
 func (*GetSnapshotRequest) ProtoMessage() {}
 
 func (x *GetSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_configuration_v1_configuration_proto_msgTypes[0]
+	mi := &file_monitoring_configuration_v1_configuration_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -55,7 +55,7 @@ func (x *GetSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*GetSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_configuration_v1_configuration_proto_rawDescGZIP(), []int{0}
+	return file_monitoring_configuration_v1_configuration_proto_rawDescGZIP(), []int{0}
 }
 
 type GetSnapshotResponse struct {
@@ -67,7 +67,7 @@ type GetSnapshotResponse struct {
 
 func (x *GetSnapshotResponse) Reset() {
 	*x = GetSnapshotResponse{}
-	mi := &file_configuration_v1_configuration_proto_msgTypes[1]
+	mi := &file_monitoring_configuration_v1_configuration_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -79,7 +79,7 @@ func (x *GetSnapshotResponse) String() string {
 func (*GetSnapshotResponse) ProtoMessage() {}
 
 func (x *GetSnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_configuration_v1_configuration_proto_msgTypes[1]
+	mi := &file_monitoring_configuration_v1_configuration_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -92,7 +92,7 @@ func (x *GetSnapshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSnapshotResponse.ProtoReflect.Descriptor instead.
 func (*GetSnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_configuration_v1_configuration_proto_rawDescGZIP(), []int{1}
+	return file_monitoring_configuration_v1_configuration_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *GetSnapshotResponse) GetServices() []*Service {
@@ -115,7 +115,7 @@ type Service struct {
 
 func (x *Service) Reset() {
 	*x = Service{}
-	mi := &file_configuration_v1_configuration_proto_msgTypes[2]
+	mi := &file_monitoring_configuration_v1_configuration_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -127,7 +127,7 @@ func (x *Service) String() string {
 func (*Service) ProtoMessage() {}
 
 func (x *Service) ProtoReflect() protoreflect.Message {
-	mi := &file_configuration_v1_configuration_proto_msgTypes[2]
+	mi := &file_monitoring_configuration_v1_configuration_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -140,7 +140,7 @@ func (x *Service) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Service.ProtoReflect.Descriptor instead.
 func (*Service) Descriptor() ([]byte, []int) {
-	return file_configuration_v1_configuration_proto_rawDescGZIP(), []int{2}
+	return file_monitoring_configuration_v1_configuration_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Service) GetId() string {
@@ -178,11 +178,11 @@ func (x *Service) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
-var File_configuration_v1_configuration_proto protoreflect.FileDescriptor
+var File_monitoring_configuration_v1_configuration_proto protoreflect.FileDescriptor
 
-const file_configuration_v1_configuration_proto_rawDesc = "" +
+const file_monitoring_configuration_v1_configuration_proto_rawDesc = "" +
 	"\n" +
-	"$configuration/v1/configuration.proto\x12\x1bmonitoring.configuration.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x14\n" +
+	"/monitoring/configuration/v1/configuration.proto\x12\x1bmonitoring.configuration.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x14\n" +
 	"\x12GetSnapshotRequest\"W\n" +
 	"\x13GetSnapshotResponse\x12@\n" +
 	"\bservices\x18\x01 \x03(\v2$.monitoring.configuration.v1.ServiceR\bservices\"\x9a\x01\n" +
@@ -194,28 +194,28 @@ const file_configuration_v1_configuration_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\x88\x01\n" +
 	"\x14ConfigurationService\x12p\n" +
-	"\vGetSnapshot\x12/.monitoring.configuration.v1.GetSnapshotRequest\x1a0.monitoring.configuration.v1.GetSnapshotResponseB^Z\\github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/configuration/v1;configurationv1b\x06proto3"
+	"\vGetSnapshot\x12/.monitoring.configuration.v1.GetSnapshotRequest\x1a0.monitoring.configuration.v1.GetSnapshotResponseBiZggithub.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/configuration/v1;configurationv1b\x06proto3"
 
 var (
-	file_configuration_v1_configuration_proto_rawDescOnce sync.Once
-	file_configuration_v1_configuration_proto_rawDescData []byte
+	file_monitoring_configuration_v1_configuration_proto_rawDescOnce sync.Once
+	file_monitoring_configuration_v1_configuration_proto_rawDescData []byte
 )
 
-func file_configuration_v1_configuration_proto_rawDescGZIP() []byte {
-	file_configuration_v1_configuration_proto_rawDescOnce.Do(func() {
-		file_configuration_v1_configuration_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_configuration_v1_configuration_proto_rawDesc), len(file_configuration_v1_configuration_proto_rawDesc)))
+func file_monitoring_configuration_v1_configuration_proto_rawDescGZIP() []byte {
+	file_monitoring_configuration_v1_configuration_proto_rawDescOnce.Do(func() {
+		file_monitoring_configuration_v1_configuration_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_monitoring_configuration_v1_configuration_proto_rawDesc), len(file_monitoring_configuration_v1_configuration_proto_rawDesc)))
 	})
-	return file_configuration_v1_configuration_proto_rawDescData
+	return file_monitoring_configuration_v1_configuration_proto_rawDescData
 }
 
-var file_configuration_v1_configuration_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
-var file_configuration_v1_configuration_proto_goTypes = []any{
+var file_monitoring_configuration_v1_configuration_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_monitoring_configuration_v1_configuration_proto_goTypes = []any{
 	(*GetSnapshotRequest)(nil),    // 0: monitoring.configuration.v1.GetSnapshotRequest
 	(*GetSnapshotResponse)(nil),   // 1: monitoring.configuration.v1.GetSnapshotResponse
 	(*Service)(nil),               // 2: monitoring.configuration.v1.Service
 	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
 }
-var file_configuration_v1_configuration_proto_depIdxs = []int32{
+var file_monitoring_configuration_v1_configuration_proto_depIdxs = []int32{
 	2, // 0: monitoring.configuration.v1.GetSnapshotResponse.services:type_name -> monitoring.configuration.v1.Service
 	3, // 1: monitoring.configuration.v1.Service.updated_at:type_name -> google.protobuf.Timestamp
 	0, // 2: monitoring.configuration.v1.ConfigurationService.GetSnapshot:input_type -> monitoring.configuration.v1.GetSnapshotRequest
@@ -227,26 +227,26 @@ var file_configuration_v1_configuration_proto_depIdxs = []int32{
 	0, // [0:2] is the sub-list for field type_name
 }
 
-func init() { file_configuration_v1_configuration_proto_init() }
-func file_configuration_v1_configuration_proto_init() {
-	if File_configuration_v1_configuration_proto != nil {
+func init() { file_monitoring_configuration_v1_configuration_proto_init() }
+func file_monitoring_configuration_v1_configuration_proto_init() {
+	if File_monitoring_configuration_v1_configuration_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_configuration_v1_configuration_proto_rawDesc), len(file_configuration_v1_configuration_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_monitoring_configuration_v1_configuration_proto_rawDesc), len(file_monitoring_configuration_v1_configuration_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_configuration_v1_configuration_proto_goTypes,
-		DependencyIndexes: file_configuration_v1_configuration_proto_depIdxs,
-		MessageInfos:      file_configuration_v1_configuration_proto_msgTypes,
+		GoTypes:           file_monitoring_configuration_v1_configuration_proto_goTypes,
+		DependencyIndexes: file_monitoring_configuration_v1_configuration_proto_depIdxs,
+		MessageInfos:      file_monitoring_configuration_v1_configuration_proto_msgTypes,
 	}.Build()
-	File_configuration_v1_configuration_proto = out.File
-	file_configuration_v1_configuration_proto_goTypes = nil
-	file_configuration_v1_configuration_proto_depIdxs = nil
+	File_monitoring_configuration_v1_configuration_proto = out.File
+	file_monitoring_configuration_v1_configuration_proto_goTypes = nil
+	file_monitoring_configuration_v1_configuration_proto_depIdxs = nil
 }

@@ -4,7 +4,7 @@ package monitoring.metrics.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/metrics/v1;metricsv1";
+option go_package = "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/metrics/v1;metricsv1";
 
 service MetricsService {
   rpc GetLatestCheck(GetLatestCheckRequest) returns (GetLatestCheckResponse);

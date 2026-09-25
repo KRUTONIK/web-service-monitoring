@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: metrics/v1/metrics.proto
+// source: monitoring/metrics/v1/metrics.proto
 
 package metricsv1
 
@@ -30,7 +30,7 @@ type GetLatestCheckRequest struct {
 
 func (x *GetLatestCheckRequest) Reset() {
 	*x = GetLatestCheckRequest{}
-	mi := &file_metrics_v1_metrics_proto_msgTypes[0]
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42,7 +42,7 @@ func (x *GetLatestCheckRequest) String() string {
 func (*GetLatestCheckRequest) ProtoMessage() {}
 
 func (x *GetLatestCheckRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metrics_v1_metrics_proto_msgTypes[0]
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -55,7 +55,7 @@ func (x *GetLatestCheckRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLatestCheckRequest.ProtoReflect.Descriptor instead.
 func (*GetLatestCheckRequest) Descriptor() ([]byte, []int) {
-	return file_metrics_v1_metrics_proto_rawDescGZIP(), []int{0}
+	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{0}
 }
 
 type GetLatestCheckResponse struct {
@@ -72,7 +72,7 @@ type GetLatestCheckResponse struct {
 
 func (x *GetLatestCheckResponse) Reset() {
 	*x = GetLatestCheckResponse{}
-	mi := &file_metrics_v1_metrics_proto_msgTypes[1]
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -84,7 +84,7 @@ func (x *GetLatestCheckResponse) String() string {
 func (*GetLatestCheckResponse) ProtoMessage() {}
 
 func (x *GetLatestCheckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_metrics_v1_metrics_proto_msgTypes[1]
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -97,7 +97,7 @@ func (x *GetLatestCheckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLatestCheckResponse.ProtoReflect.Descriptor instead.
 func (*GetLatestCheckResponse) Descriptor() ([]byte, []int) {
-	return file_metrics_v1_metrics_proto_rawDescGZIP(), []int{1}
+	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *GetLatestCheckResponse) GetServiceUrl() string {
@@ -142,11 +142,11 @@ func (x *GetLatestCheckResponse) GetError() string {
 	return ""
 }
 
-var File_metrics_v1_metrics_proto protoreflect.FileDescriptor
+var File_monitoring_metrics_v1_metrics_proto protoreflect.FileDescriptor
 
-const file_metrics_v1_metrics_proto_rawDesc = "" +
+const file_monitoring_metrics_v1_metrics_proto_rawDesc = "" +
 	"\n" +
-	"\x18metrics/v1/metrics.proto\x12\x15monitoring.metrics.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x17\n" +
+	"#monitoring/metrics/v1/metrics.proto\x12\x15monitoring.metrics.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x17\n" +
 	"\x15GetLatestCheckRequest\"\xf3\x01\n" +
 	"\x16GetLatestCheckResponse\x12\x1f\n" +
 	"\vservice_url\x18\x01 \x01(\tR\n" +
@@ -159,27 +159,27 @@ const file_metrics_v1_metrics_proto_rawDesc = "" +
 	"\x10response_time_ms\x18\x05 \x01(\x03R\x0eresponseTimeMs\x12\x14\n" +
 	"\x05error\x18\x06 \x01(\tR\x05error2\x7f\n" +
 	"\x0eMetricsService\x12m\n" +
-	"\x0eGetLatestCheck\x12,.monitoring.metrics.v1.GetLatestCheckRequest\x1a-.monitoring.metrics.v1.GetLatestCheckResponseBRZPgithub.com/KRUTONIK/web-service-monitoring/contracts/gen/go/metrics/v1;metricsv1b\x06proto3"
+	"\x0eGetLatestCheck\x12,.monitoring.metrics.v1.GetLatestCheckRequest\x1a-.monitoring.metrics.v1.GetLatestCheckResponseB]Z[github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/metrics/v1;metricsv1b\x06proto3"
 
 var (
-	file_metrics_v1_metrics_proto_rawDescOnce sync.Once
-	file_metrics_v1_metrics_proto_rawDescData []byte
+	file_monitoring_metrics_v1_metrics_proto_rawDescOnce sync.Once
+	file_monitoring_metrics_v1_metrics_proto_rawDescData []byte
 )
 
-func file_metrics_v1_metrics_proto_rawDescGZIP() []byte {
-	file_metrics_v1_metrics_proto_rawDescOnce.Do(func() {
-		file_metrics_v1_metrics_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_metrics_v1_metrics_proto_rawDesc), len(file_metrics_v1_metrics_proto_rawDesc)))
+func file_monitoring_metrics_v1_metrics_proto_rawDescGZIP() []byte {
+	file_monitoring_metrics_v1_metrics_proto_rawDescOnce.Do(func() {
+		file_monitoring_metrics_v1_metrics_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_monitoring_metrics_v1_metrics_proto_rawDesc), len(file_monitoring_metrics_v1_metrics_proto_rawDesc)))
 	})
-	return file_metrics_v1_metrics_proto_rawDescData
+	return file_monitoring_metrics_v1_metrics_proto_rawDescData
 }
 
-var file_metrics_v1_metrics_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
-var file_metrics_v1_metrics_proto_goTypes = []any{
+var file_monitoring_metrics_v1_metrics_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_monitoring_metrics_v1_metrics_proto_goTypes = []any{
 	(*GetLatestCheckRequest)(nil),  // 0: monitoring.metrics.v1.GetLatestCheckRequest
 	(*GetLatestCheckResponse)(nil), // 1: monitoring.metrics.v1.GetLatestCheckResponse
 	(*timestamppb.Timestamp)(nil),  // 2: google.protobuf.Timestamp
 }
-var file_metrics_v1_metrics_proto_depIdxs = []int32{
+var file_monitoring_metrics_v1_metrics_proto_depIdxs = []int32{
 	2, // 0: monitoring.metrics.v1.GetLatestCheckResponse.checked_at:type_name -> google.protobuf.Timestamp
 	0, // 1: monitoring.metrics.v1.MetricsService.GetLatestCheck:input_type -> monitoring.metrics.v1.GetLatestCheckRequest
 	1, // 2: monitoring.metrics.v1.MetricsService.GetLatestCheck:output_type -> monitoring.metrics.v1.GetLatestCheckResponse
@@ -190,26 +190,26 @@ var file_metrics_v1_metrics_proto_depIdxs = []int32{
 	0, // [0:1] is the sub-list for field type_name
 }
 
-func init() { file_metrics_v1_metrics_proto_init() }
-func file_metrics_v1_metrics_proto_init() {
-	if File_metrics_v1_metrics_proto != nil {
+func init() { file_monitoring_metrics_v1_metrics_proto_init() }
+func file_monitoring_metrics_v1_metrics_proto_init() {
+	if File_monitoring_metrics_v1_metrics_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_metrics_v1_metrics_proto_rawDesc), len(file_metrics_v1_metrics_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_monitoring_metrics_v1_metrics_proto_rawDesc), len(file_monitoring_metrics_v1_metrics_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_metrics_v1_metrics_proto_goTypes,
-		DependencyIndexes: file_metrics_v1_metrics_proto_depIdxs,
-		MessageInfos:      file_metrics_v1_metrics_proto_msgTypes,
+		GoTypes:           file_monitoring_metrics_v1_metrics_proto_goTypes,
+		DependencyIndexes: file_monitoring_metrics_v1_metrics_proto_depIdxs,
+		MessageInfos:      file_monitoring_metrics_v1_metrics_proto_msgTypes,
 	}.Build()
-	File_metrics_v1_metrics_proto = out.File
-	file_metrics_v1_metrics_proto_goTypes = nil
-	file_metrics_v1_metrics_proto_depIdxs = nil
+	File_monitoring_metrics_v1_metrics_proto = out.File
+	file_monitoring_metrics_v1_metrics_proto_goTypes = nil
+	file_monitoring_metrics_v1_metrics_proto_depIdxs = nil
 }

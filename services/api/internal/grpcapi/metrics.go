@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	metricsv1 "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/metrics/v1"
+	metricsv1 "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/metrics/v1"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/monitoring"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
