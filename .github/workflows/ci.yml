@@ -68,11 +68,13 @@ jobs:
           cache-dependency-path: |
             services/api/go.mod
             services/checker/go.mod
+            contracts/go.mod
+            services/metrics/go.mod
             services/notification/go.mod
 
       - name: Check formatting
         run: |
-          UNFORMATTED=$(gofmt -l services)
+          UNFORMATTED=$(gofmt -l contracts/gen services)
 
           if [ -n "$UNFORMATTED" ]; then
             echo "The following Go files are not formatted:"
@@ -84,12 +86,14 @@ jobs:
         run: |
           go vet ./services/api/...
           go vet ./services/checker/...
+          go vet ./services/metrics/...
           go vet ./services/notification/...
 
       - name: Run Go tests with coverage
         run: |
           go test -coverprofile=services/api/coverage.out ./services/api/...
           go test -coverprofile=services/checker/coverage.out ./services/checker/...
+          go test -coverprofile=services/metrics/coverage.out ./services/metrics/...
           go test -coverprofile=services/notification/coverage.out ./services/notification/...
 
       - name: Show coverage
@@ -103,6 +107,9 @@ jobs:
           echo "Notification Service:"
           go tool cover -func=services/notification/coverage.out
 
+          echo "Metrics Service:"
+          go tool cover -func=services/metrics/coverage.out
+
       - name: Upload coverage reports
         uses: actions/upload-artifact@v6
         with:
@@ -110,6 +117,7 @@ jobs:
           path: |
             services/api/coverage.out
             services/checker/coverage.out
+            services/metrics/coverage.out
             services/notification/coverage.out
 
   web-quality:
@@ -148,6 +156,7 @@ jobs:
         service:
           - services/api
           - services/checker
+          - services/metrics
           - services/notification
 
     steps:
@@ -204,6 +213,8 @@ jobs:
           cache-dependency-path: |
             services/api/go.mod
             services/checker/go.mod
+            contracts/go.mod
+            services/metrics/go.mod
             services/notification/go.mod
 
       - name: Setup Node.js
@@ -223,6 +234,7 @@ jobs:
 
           go build -o build/services/api ./services/api/cmd/api
           go build -o build/services/checker ./services/checker/cmd/checker
+          go build -o build/services/metrics ./services/metrics/cmd/metrics
           go build -o build/services/notification ./services/notification
 
       - name: Build Web UI
@@ -260,6 +272,8 @@ jobs:
           cache-dependency-path: |
             services/api/go.mod
             services/checker/go.mod
+            contracts/go.mod
+            services/metrics/go.mod
             services/notification/go.mod
 
       - name: Install complexity analyzer
@@ -278,6 +292,7 @@ jobs:
             -coverprofile=metrics/generated/coverage.out \
             ./services/api/... \
             ./services/checker/... \
+            ./services/metrics/... \
             ./services/notification/... \
             > metrics/generated/tests.json
 
