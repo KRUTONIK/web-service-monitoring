@@ -1,121 +1,94 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
+import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 
+const apiURL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
+
+async function getLatestCheck(signal) {
+  const response = await fetch(`${apiURL}/api/checks/latest`, { signal })
+  if (response.ok) return response.json()
+  if (response.status === 404) throw new Error('Результатов проверки пока нет')
+  throw new Error('Не удалось получить данные мониторинга')
+}
+
+function formatDate(value) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('ru-RU')
+}
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [check, setCheck] = useState(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      setCheck(await getLatestCheck())
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    getLatestCheck(controller.signal)
+      .then(setCheck)
+      .catch((requestError) => {
+        if (requestError.name !== 'AbortError') setError(requestError.message)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+    return () => controller.abort()
+  }, [])
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
+    <main className="container">
+      <header>
         <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
+          <h1>Мониторинг веб-сервиса</h1>
+          <p>Последний результат проверки</p>
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
+        <button type="button" onClick={refresh} disabled={loading}>
+          {loading ? 'Обновление…' : 'Обновить'}
         </button>
-      </section>
+      </header>
 
-      <div className="ticks"></div>
+      {loading && !check && <p className="message">Загрузка…</p>}
+      {error && !check && <p className="message error">{error}</p>}
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      {check && (
+        <section>
+          <div className="service">
+            <strong>{check.service_url}</strong>
+            <span className={check.available ? 'available' : 'unavailable'}>
+              {check.available ? 'Доступен' : 'Недоступен'}
+            </span>
+          </div>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+          <dl>
+            <div>
+              <dt>HTTP-код</dt>
+              <dd>{check.status_code || '—'}</dd>
+            </div>
+            <div>
+              <dt>Время ответа</dt>
+              <dd>{check.response_time_ms} мс</dd>
+            </div>
+            <div>
+              <dt>Время проверки</dt>
+              <dd>{formatDate(check.checked_at)}</dd>
+            </div>
+          </dl>
+
+          {check.error && <p className="error">{check.error}</p>}
+          {error && <p className="error">{error}</p>}
+        </section>
+      )}
+    </main>
   )
 }
 
