@@ -27,11 +27,11 @@ Open:
 - API health check: http://localhost:8080/health
 - latest check result: http://localhost:8080/api/checks/latest
 
-The Checker Service performs one check and exits with code `0`. This is expected
-prototype behavior. Run it again without rebuilding the other services:
+The Checker Service remains running to receive configuration and result requests
+through RabbitMQ. Restart it to repeat the startup check:
 
 ```bash
-docker compose run --rm checker
+docker compose restart checker
 ```
 
 Stop the prototype while preserving stored data:
@@ -54,6 +54,10 @@ The system consists of:
 - PostgreSQL — configuration and incidents
 - InfluxDB — monitoring results
 - RabbitMQ — communication between microservices
+
+API Service owns configuration in PostgreSQL. Checker Service owns monitoring
+results in InfluxDB. The services exchange configuration and result requests
+only through RabbitMQ; API Service has no direct access to InfluxDB.
 
 ## Project structure
 

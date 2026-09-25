@@ -7,21 +7,31 @@ selected technology stack before implementation of the monitoring core.
 
 The scenario is:
 
-1. Checker Service sends an HTTP request to one configured URL.
-2. Checker Service measures the response time and determines availability.
-3. The result is stored in InfluxDB.
-4. API Service reads the latest stored result.
-5. Web UI displays the result to the user.
+1. API Service stores one service configuration in PostgreSQL.
+2. On startup, Checker Service requests the configuration snapshot from API
+   Service through RabbitMQ.
+3. Checker Service sends an HTTP request to the configured URL, measures the
+   response time and determines availability.
+4. Checker Service stores the result in its InfluxDB storage.
+5. Web UI requests the latest result from API Service over REST.
+6. API Service requests the result from Checker Service through RabbitMQ;
+   Checker Service reads InfluxDB and sends the response back through RabbitMQ.
+7. API Service returns the result to Web UI.
 
 ```text
-Target web service
-        |
-        v
-Checker Service ---> InfluxDB ---> API Service ---> Web UI
+Web UI --REST--> API Service --SQL--> PostgreSQL
+                    |   ^
+                    |   | RabbitMQ (configuration snapshot and result RPC)
+                    v   |
+                Checker Service --write/read--> InfluxDB
+                    |
+                    v
+             Target web service
 ```
 
-PostgreSQL, RabbitMQ and Notification Service remain in the project
-infrastructure but are not used by this prototype scenario.
+API Service does not access InfluxDB directly, and Checker Service does not
+access PostgreSQL directly. Notification Service remains outside this prototype
+scenario.
 
 ## Implemented behavior
 
@@ -37,9 +47,16 @@ Checker Service records:
 HTTP responses from `200` through `299` are treated as available. Network
 errors, timeouts and other response codes are treated as unavailable.
 
-Checker Service is a one-shot process at this stage. It performs one check,
-writes one result and exits. Periodic scheduling belongs to the monitoring-core
-stage.
+Checker Service remains running after the initial check. It consumes durable
+configuration-update messages and performs another check when it receives a
+newer enabled configuration. Periodic scheduling belongs to the
+monitoring-core stage.
+
+Each configuration has a monotonically increasing `version`. Checker Service
+first replaces its local state with the startup snapshot and then consumes
+queued updates. An update whose version is not greater than the snapshot or
+current local version is acknowledged and ignored. This prevents an older
+queued message from rolling back a newer startup snapshot.
 
 API Service provides:
 
@@ -56,16 +73,18 @@ the refresh button.
 
 | Variable | Service | Default |
 |---|---|---|
-| `MONITOR_URL` | Checker | `https://example.com` |
 | `API_LISTEN_ADDRESS` | API | `:8080` |
-| `INFLUXDB_URL` | Checker, API | `http://localhost:8086` |
-| `INFLUXDB_ORG` | Checker, API | `monitoring` |
-| `INFLUXDB_BUCKET` | Checker, API | `monitoring` |
-| `INFLUXDB_TOKEN` | Checker, API | `monitoring-test-token` |
+| `POSTGRES_DSN` | API | local monitoring database |
+| `PROTOTYPE_SERVICE_URL` | API | `https://example.com` |
+| `RABBITMQ_URL` | API, Checker | local monitoring broker |
+| `INFLUXDB_URL` | Checker | `http://localhost:8086` |
+| `INFLUXDB_ORG` | Checker | `monitoring` |
+| `INFLUXDB_BUCKET` | Checker | `monitoring` |
+| `INFLUXDB_TOKEN` | Checker | `monitoring-test-token` |
 | `VITE_API_URL` | Web build | `http://localhost:8080` |
 
-The Compose configuration replaces the InfluxDB URL with the internal service
-address `http://influxdb:8086`.
+Compose replaces database and broker addresses with their internal service
+names.
 
 ## Running with Docker
 
@@ -75,8 +94,8 @@ Build and start all components:
 docker compose up --build
 ```
 
-Checker Service should finish with status `Exited (0)`. The infrastructure, API
-and Web UI continue running.
+Checker Service should remain in the `running` state so it can consume RabbitMQ
+messages.
 
 Inspect the result:
 
@@ -84,10 +103,10 @@ Inspect the result:
 curl http://localhost:8080/api/checks/latest
 ```
 
-Run another check:
+Repeat the startup check:
 
 ```bash
-docker compose run --rm checker
+docker compose restart checker
 ```
 
 Stop all services and preserve InfluxDB data:
@@ -104,8 +123,9 @@ docker compose down -v
 
 ## Automated verification
 
-Unit tests cover the HTTP checker, environment configuration, InfluxDB write and
-query clients, CSV response parsing and API handlers.
+Unit tests cover the HTTP checker, versioned configuration state, environment
+configuration, InfluxDB write and query clients, CSV response parsing and API
+handlers.
 
 The full prototype integration test runs through Docker Compose:
 
@@ -113,17 +133,17 @@ The full prototype integration test runs through Docker Compose:
 bash scripts/prototype-test.sh
 ```
 
-The test builds the images, waits for API readiness, verifies the Checker exit
-code, validates the returned JSON and checks that the Web UI is available. CI
-runs this scenario after the infrastructure integration test.
+The test builds the images, waits for API and Checker readiness, polls until a
+monitoring result is available, validates the returned JSON and checks that the
+Web UI is available. CI runs this scenario after the infrastructure integration
+test.
 
 ## Prototype limitations
 
-- only one URL is configured through the environment;
-- the check is executed once rather than periodically;
+- only one URL is seeded through the environment;
+- the check is executed on startup or configuration update, not periodically;
 - only the latest result is available through the API;
 - there is no service-management interface;
-- PostgreSQL and RabbitMQ are not integrated into the scenario;
 - incidents, analytics and notifications are not implemented;
 - authentication and production secret management are outside the prototype
   scope.
