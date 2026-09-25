@@ -55,6 +55,16 @@ for i in {1..60}; do
     sleep 2
 done
 
+echo "Checking Metrics Service..."
+status=$(docker inspect \
+    --format='{{.State.Status}}' \
+    monitoring-metrics 2>/dev/null || true)
+if [ "$status" != "running" ]; then
+    echo "Metrics Service is not running"
+    "${COMPOSE[@]}" logs metrics
+    exit 1
+fi
+
 echo "Checking API result..."
 for i in {1..60}; do
     if result=$(curl --fail --silent http://localhost:8080/api/checks/latest); then
@@ -63,7 +73,7 @@ for i in {1..60}; do
 
     if [ "$i" -eq 60 ]; then
         echo "Monitoring result did not become available"
-        "${COMPOSE[@]}" logs api checker
+        "${COMPOSE[@]}" logs api checker metrics
         exit 1
     fi
 
