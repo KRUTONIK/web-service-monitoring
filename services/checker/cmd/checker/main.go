@@ -9,6 +9,7 @@ import (
 
 	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/check"
 	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/config"
+	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/grpcapi"
 	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/messaging"
 	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/serviceconfig"
 	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/storage"
@@ -32,9 +33,14 @@ func main() {
 		log.Fatalf("open RabbitMQ connection: %v", err)
 	}
 	defer broker.Close()
+	configurationClient, err := grpcapi.OpenConfigurationClient(cfg.APITarget)
+	if err != nil {
+		log.Fatalf("open API Service gRPC connection: %v", err)
+	}
+	defer configurationClient.Close()
 
 	snapshotContext, cancel := context.WithTimeout(ctx, 10*time.Second)
-	snapshot, err := broker.RequestSnapshot(snapshotContext)
+	snapshot, err := configurationClient.Snapshot(snapshotContext)
 	cancel()
 	if err != nil {
 		log.Fatalf("request configuration snapshot: %v", err)
@@ -42,12 +48,6 @@ func main() {
 
 	state := serviceconfig.NewState()
 	state.Replace(snapshot)
-	go func() {
-		if err := broker.ServeResultRequests(ctx, checkStorage); err != nil {
-			log.Printf("serve result requests: %v", err)
-		}
-	}()
-
 	for _, service := range state.Services() {
 		if service.Enabled {
 			if err := runCheck(ctx, checker, checkStorage, service); err != nil {
