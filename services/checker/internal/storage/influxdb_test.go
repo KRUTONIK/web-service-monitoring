@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,54 @@ import (
 
 	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/check"
 )
+
+func TestLatest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/v2/query" {
+			t.Errorf("unexpected path: %s", request.URL.Path)
+		}
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatalf("read query: %v", err)
+		}
+		for _, expected := range []string{`from(bucket: "test-bucket")`, "|> pivot", "|> limit(n: 1)"} {
+			if !strings.Contains(string(body), expected) {
+				t.Errorf("query does not contain %q", expected)
+			}
+		}
+
+		writer.Header().Set("Content-Type", "text/csv")
+		_, _ = writer.Write([]byte(`#datatype,string,long,dateTime:RFC3339,string,boolean,long,long,string
+#group,false,false,false,true,false,false,false,false
+#default,_result,,,,,,,
+,result,table,_time,service_url,available,status_code,response_time_ms,error
+,,0,2026-09-25T10:30:00.123Z,https://service.test,true,204,27,
+`))
+	}))
+	defer server.Close()
+
+	influx := NewInfluxDB(server.Client(), server.URL, "test-org", "test-bucket", "test-token")
+	result, err := influx.Latest(context.Background())
+	if err != nil {
+		t.Fatalf("get latest result: %v", err)
+	}
+	if result.ServiceURL != "https://service.test" || !result.Available || result.StatusCode != 204 || result.ResponseTimeMS != 27 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+}
+
+func TestLatestNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write([]byte("#datatype,string\n"))
+	}))
+	defer server.Close()
+
+	influx := NewInfluxDB(server.Client(), server.URL, "test-org", "test-bucket", "test-token")
+	_, err := influx.Latest(context.Background())
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected not found error, got %v", err)
+	}
+}
 
 func TestWriteCheckResult(t *testing.T) {
 	var receivedBody string

@@ -5,9 +5,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 
+	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/check"
 	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/serviceconfig"
+	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/storage"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -19,6 +22,15 @@ const (
 
 type Broker struct {
 	connection *amqp.Connection
+}
+
+type resultReader interface {
+	Latest(context.Context) (check.Result, error)
+}
+
+type resultResponse struct {
+	Result *check.Result `json:"result,omitempty"`
+	Error  string        `json:"error,omitempty"`
 }
 
 func Open(rabbitMQURL string) (*Broker, error) {
@@ -117,6 +129,60 @@ func (broker *Broker) ConsumeUpdates(
 				continue
 			}
 			if err := handler(update); err != nil {
+				delivery.Nack(false, true)
+				continue
+			}
+			delivery.Ack(false)
+		}
+	}
+}
+
+func (broker *Broker) ServeResultRequests(ctx context.Context, reader resultReader) error {
+	channel, err := broker.connection.Channel()
+	if err != nil {
+		return fmt.Errorf("open result request channel: %w", err)
+	}
+	defer channel.Close()
+
+	deliveries, err := channel.Consume(resultRequestsQueue, "checker-results", false, false, false, false, nil)
+	if err != nil {
+		return fmt.Errorf("consume result requests: %w", err)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case delivery, ok := <-deliveries:
+			if !ok {
+				return fmt.Errorf("result request channel closed")
+			}
+
+			response := resultResponse{}
+			result, readErr := reader.Latest(ctx)
+			switch {
+			case readErr == nil:
+				response.Result = &result
+			case errors.Is(readErr, storage.ErrNotFound):
+				response.Error = "not_found"
+			default:
+				response.Error = "storage_error"
+			}
+
+			body, marshalErr := json.Marshal(response)
+			if marshalErr != nil {
+				delivery.Nack(false, true)
+				continue
+			}
+			if delivery.ReplyTo == "" {
+				delivery.Ack(false)
+				continue
+			}
+			if err := channel.PublishWithContext(ctx, "", delivery.ReplyTo, false, false, amqp.Publishing{
+				ContentType:   "application/json",
+				CorrelationId: delivery.CorrelationId,
+				Body:          body,
+			}); err != nil {
 				delivery.Nack(false, true)
 				continue
 			}

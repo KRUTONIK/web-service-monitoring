@@ -42,6 +42,12 @@ func main() {
 
 	state := serviceconfig.NewState()
 	state.Replace(snapshot)
+	go func() {
+		if err := broker.ServeResultRequests(ctx, checkStorage); err != nil {
+			log.Printf("serve result requests: %v", err)
+		}
+	}()
+
 	for _, service := range state.Services() {
 		if service.Enabled {
 			if err := runCheck(ctx, checker, checkStorage, service); err != nil {
