@@ -31,12 +31,20 @@ func main() {
 	if err != nil {
 		log.Fatalf("open RabbitMQ connection: %v", err)
 	}
-	defer broker.Close()
+	defer func() {
+		if err := broker.Close(); err != nil {
+			log.Printf("close RabbitMQ connection: %v", err)
+		}
+	}()
 	configurationClient, err := grpcapi.OpenConfigurationClient(cfg.APITarget)
 	if err != nil {
 		log.Fatalf("open API Service gRPC connection: %v", err)
 	}
-	defer configurationClient.Close()
+	defer func() {
+		if err := configurationClient.Close(); err != nil {
+			log.Printf("close API Service gRPC connection: %v", err)
+		}
+	}()
 
 	snapshotContext, cancel := context.WithTimeout(ctx, 10*time.Second)
 	snapshot, err := configurationClient.Snapshot(snapshotContext)

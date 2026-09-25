@@ -27,7 +27,7 @@ func OpenConfigurationBroker(rabbitMQURL string, repository configurationReposit
 	}
 	broker := &ConfigurationBroker{connection: connection, repository: repository}
 	if err := broker.declareQueue(); err != nil {
-		connection.Close()
+		_ = connection.Close()
 		return nil, err
 	}
 	return broker, nil
@@ -46,7 +46,7 @@ func (broker *ConfigurationBroker) PublishCurrentConfiguration(ctx context.Conte
 	if err != nil {
 		return fmt.Errorf("open RabbitMQ channel: %w", err)
 	}
-	defer channel.Close()
+	defer func() { _ = channel.Close() }()
 
 	for _, service := range services {
 		body, err := json.Marshal(serviceconfig.Update{Event: "service.updated", Service: service})
@@ -67,7 +67,7 @@ func (broker *ConfigurationBroker) declareQueue() error {
 	if err != nil {
 		return fmt.Errorf("open declaration channel: %w", err)
 	}
-	defer channel.Close()
+	defer func() { _ = channel.Close() }()
 	if _, err := channel.QueueDeclare(configUpdatesQueue, true, false, false, false, nil); err != nil {
 		return fmt.Errorf("declare queue %s: %w", configUpdatesQueue, err)
 	}

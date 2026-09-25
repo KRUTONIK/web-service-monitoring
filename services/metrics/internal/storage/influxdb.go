@@ -51,7 +51,7 @@ func (influx *InfluxDB) Latest(ctx context.Context) (metric.Result, error) {
 	if err != nil {
 		return metric.Result{}, fmt.Errorf("query InfluxDB: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 1024))
 		return metric.Result{}, fmt.Errorf("InfluxDB returned %s: %s", response.Status, strings.TrimSpace(string(body)))

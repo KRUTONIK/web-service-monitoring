@@ -22,7 +22,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("initialize configuration repository: %v", err)
 	}
-	defer configRepository.Close()
+	defer func() {
+		if err := configRepository.Close(); err != nil {
+			log.Printf("close configuration repository: %v", err)
+		}
+	}()
 	if err := configRepository.Initialize(ctx, cfg.ServiceURL); err != nil {
 		log.Fatalf("initialize prototype configuration: %v", err)
 	}
@@ -30,7 +34,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("initialize configuration messaging: %v", err)
 	}
-	defer configBroker.Close()
+	defer func() {
+		if err := configBroker.Close(); err != nil {
+			log.Printf("close RabbitMQ connection: %v", err)
+		}
+	}()
 	if err := configBroker.PublishCurrentConfiguration(ctx); err != nil {
 		log.Fatalf("publish prototype configuration: %v", err)
 	}
@@ -38,7 +46,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("initialize Metrics Service client: %v", err)
 	}
-	defer metricsClient.Close()
+	defer func() {
+		if err := metricsClient.Close(); err != nil {
+			log.Printf("close Metrics Service gRPC connection: %v", err)
+		}
+	}()
 
 	grpcListener, err := net.Listen("tcp", cfg.GRPCAddress)
 	if err != nil {

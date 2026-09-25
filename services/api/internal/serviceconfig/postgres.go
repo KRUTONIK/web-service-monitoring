@@ -20,7 +20,7 @@ func Open(ctx context.Context, dsn string) (*Repository, error) {
 		return nil, fmt.Errorf("open PostgreSQL: %w", err)
 	}
 	if err := database.PingContext(ctx); err != nil {
-		database.Close()
+		_ = database.Close()
 		return nil, fmt.Errorf("connect to PostgreSQL: %w", err)
 	}
 
@@ -66,7 +66,7 @@ func (repository *Repository) List(ctx context.Context) ([]Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query monitored services: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	services := make([]Service, 0)
 	for rows.Next() {

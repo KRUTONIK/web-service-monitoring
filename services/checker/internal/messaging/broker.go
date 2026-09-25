@@ -20,7 +20,7 @@ func Open(rabbitMQURL string) (*Broker, error) {
 	}
 	broker := &Broker{connection: connection}
 	if err := broker.declareQueue(); err != nil {
-		connection.Close()
+		_ = connection.Close()
 		return nil, err
 	}
 	return broker, nil
@@ -33,7 +33,7 @@ func (broker *Broker) ConsumeUpdates(ctx context.Context, handler func(serviceco
 	if err != nil {
 		return fmt.Errorf("open configuration update channel: %w", err)
 	}
-	defer channel.Close()
+	defer func() { _ = channel.Close() }()
 	deliveries, err := channel.Consume(configUpdatesQueue, "checker-config", false, false, false, false, nil)
 	if err != nil {
 		return fmt.Errorf("consume configuration updates: %w", err)
@@ -49,14 +49,20 @@ func (broker *Broker) ConsumeUpdates(ctx context.Context, handler func(serviceco
 			}
 			var update serviceconfig.Update
 			if err := json.Unmarshal(delivery.Body, &update); err != nil {
-				delivery.Nack(false, false)
+				if nackErr := delivery.Nack(false, false); nackErr != nil {
+					return fmt.Errorf("reject invalid configuration update: %w", nackErr)
+				}
 				continue
 			}
 			if err := handler(update); err != nil {
-				delivery.Nack(false, true)
+				if nackErr := delivery.Nack(false, true); nackErr != nil {
+					return fmt.Errorf("requeue configuration update: %w", nackErr)
+				}
 				continue
 			}
-			delivery.Ack(false)
+			if err := delivery.Ack(false); err != nil {
+				return fmt.Errorf("acknowledge configuration update: %w", err)
+			}
 		}
 	}
 }
@@ -66,7 +72,7 @@ func (broker *Broker) declareQueue() error {
 	if err != nil {
 		return fmt.Errorf("open declaration channel: %w", err)
 	}
-	defer channel.Close()
+	defer func() { _ = channel.Close() }()
 	if _, err := channel.QueueDeclare(configUpdatesQueue, true, false, false, false, nil); err != nil {
 		return fmt.Errorf("declare queue %s: %w", configUpdatesQueue, err)
 	}

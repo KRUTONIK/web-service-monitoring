@@ -42,7 +42,7 @@ func (checker *Checker) Run(ctx context.Context, serviceURL string) Result {
 		result.Error = err.Error()
 		return result
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	result.StatusCode = response.StatusCode
 	result.Available = response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices

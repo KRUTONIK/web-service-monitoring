@@ -47,7 +47,7 @@ func (influx *InfluxDB) Write(ctx context.Context, result check.Result) error {
 	if err != nil {
 		return fmt.Errorf("write result to InfluxDB: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusNoContent {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 1024))
 		return fmt.Errorf("InfluxDB returned %s: %s", response.Status, strings.TrimSpace(string(body)))
