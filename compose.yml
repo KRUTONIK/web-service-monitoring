@@ -9,14 +9,15 @@ services:
     container_name: monitoring-api
     environment:
       API_LISTEN_ADDRESS: ":8080"
-      INFLUXDB_URL: http://influxdb:8086
-      INFLUXDB_ORG: monitoring
-      INFLUXDB_BUCKET: monitoring
-      INFLUXDB_TOKEN: monitoring-test-token
+      POSTGRES_DSN: postgres://monitoring:monitoring@postgres:5432/monitoring?sslmode=disable
+      PROTOTYPE_SERVICE_URL: https://example.com
+      RABBITMQ_URL: amqp://monitoring:monitoring@rabbitmq:5672/
     ports:
       - "8080:8080"
     depends_on:
-      influxdb:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       test:
@@ -38,13 +39,17 @@ services:
       dockerfile: services/checker/Dockerfile
     container_name: monitoring-checker
     environment:
-      MONITOR_URL: https://example.com
+      RABBITMQ_URL: amqp://monitoring:monitoring@rabbitmq:5672/
       INFLUXDB_URL: http://influxdb:8086
       INFLUXDB_ORG: monitoring
       INFLUXDB_BUCKET: monitoring
       INFLUXDB_TOKEN: monitoring-test-token
     depends_on:
+      api:
+        condition: service_healthy
       influxdb:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   web:
