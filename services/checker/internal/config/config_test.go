@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-func TestLoadConfiguredMonitorURL(t *testing.T) {
-	t.Setenv("MONITOR_URL", "https://service.test")
+func TestLoadConfiguredValues(t *testing.T) {
+	t.Setenv("RABBITMQ_URL", "amqp://rabbitmq.test")
 	t.Setenv("INFLUXDB_URL", "http://influxdb.test")
 	t.Setenv("INFLUXDB_ORG", "test-org")
 	t.Setenv("INFLUXDB_BUCKET", "test-bucket")
@@ -14,11 +14,11 @@ func TestLoadConfiguredMonitorURL(t *testing.T) {
 
 	cfg := Load()
 
-	if cfg.MonitorURL != "https://service.test" {
-		t.Fatalf("unexpected monitor URL: %s", cfg.MonitorURL)
-	}
 	if cfg.RequestTimeout != 5*time.Second {
 		t.Fatalf("unexpected request timeout: %s", cfg.RequestTimeout)
+	}
+	if cfg.RabbitMQURL != "amqp://rabbitmq.test" {
+		t.Fatalf("unexpected RabbitMQ URL: %s", cfg.RabbitMQURL)
 	}
 	if cfg.InfluxDBURL != "http://influxdb.test" {
 		t.Fatalf("unexpected InfluxDB URL: %s", cfg.InfluxDBURL)
@@ -34,8 +34,8 @@ func TestLoadConfiguredMonitorURL(t *testing.T) {
 	}
 }
 
-func TestLoadDefaultMonitorURL(t *testing.T) {
-	t.Setenv("MONITOR_URL", "")
+func TestLoadDefaultValues(t *testing.T) {
+	t.Setenv("RABBITMQ_URL", "")
 	t.Setenv("INFLUXDB_URL", "")
 	t.Setenv("INFLUXDB_ORG", "")
 	t.Setenv("INFLUXDB_BUCKET", "")
@@ -43,8 +43,8 @@ func TestLoadDefaultMonitorURL(t *testing.T) {
 
 	cfg := Load()
 
-	if cfg.MonitorURL != "https://example.com" {
-		t.Fatalf("unexpected default monitor URL: %s", cfg.MonitorURL)
+	if cfg.RabbitMQURL != "amqp://monitoring:monitoring@localhost:5672/" {
+		t.Fatalf("unexpected default RabbitMQ URL: %s", cfg.RabbitMQURL)
 	}
 	if cfg.InfluxDBURL != "http://localhost:8086" {
 		t.Fatalf("unexpected default InfluxDB URL: %s", cfg.InfluxDBURL)

@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	defaultMonitorURL     = "https://example.com"
 	defaultTimeout        = 5 * time.Second
+	defaultRabbitMQURL    = "amqp://monitoring:monitoring@localhost:5672/"
 	defaultInfluxDBURL    = "http://localhost:8086"
 	defaultInfluxDBOrg    = "monitoring"
 	defaultInfluxDBBucket = "monitoring"
@@ -15,8 +15,8 @@ const (
 )
 
 type Config struct {
-	MonitorURL     string
 	RequestTimeout time.Duration
+	RabbitMQURL    string
 	InfluxDBURL    string
 	InfluxDBOrg    string
 	InfluxDBBucket string
@@ -25,8 +25,8 @@ type Config struct {
 
 func Load() Config {
 	return Config{
-		MonitorURL:     valueOrDefault("MONITOR_URL", defaultMonitorURL),
 		RequestTimeout: defaultTimeout,
+		RabbitMQURL:    valueOrDefault("RABBITMQ_URL", defaultRabbitMQURL),
 		InfluxDBURL:    valueOrDefault("INFLUXDB_URL", defaultInfluxDBURL),
 		InfluxDBOrg:    valueOrDefault("INFLUXDB_ORG", defaultInfluxDBOrg),
 		InfluxDBBucket: valueOrDefault("INFLUXDB_BUCKET", defaultInfluxDBBucket),

@@ -2,21 +2,23 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
-	"os"
+	"time"
 
 	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/check"
 	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/config"
+	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/messaging"
+	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/serviceconfig"
 	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/storage"
 )
 
 func main() {
 	cfg := config.Load()
-	client := &http.Client{Timeout: cfg.RequestTimeout}
 	ctx := context.Background()
-	result := check.New(client).Run(ctx, cfg.MonitorURL)
+	client := &http.Client{Timeout: cfg.RequestTimeout}
+	checker := check.New(client)
 
 	checkStorage := storage.NewInfluxDB(
 		client,
@@ -25,13 +27,62 @@ func main() {
 		cfg.InfluxDBBucket,
 		cfg.InfluxDBToken,
 	)
-	if err := checkStorage.Write(ctx, result); err != nil {
-		fmt.Fprintf(os.Stderr, "store check result: %v\n", err)
-		os.Exit(1)
+	broker, err := messaging.Open(cfg.RabbitMQURL)
+	if err != nil {
+		log.Fatalf("open RabbitMQ connection: %v", err)
+	}
+	defer broker.Close()
+
+	snapshotContext, cancel := context.WithTimeout(ctx, 10*time.Second)
+	snapshot, err := broker.RequestSnapshot(snapshotContext)
+	cancel()
+	if err != nil {
+		log.Fatalf("request configuration snapshot: %v", err)
 	}
 
-	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
-		fmt.Fprintf(os.Stderr, "encode check result: %v\n", err)
-		os.Exit(1)
+	state := serviceconfig.NewState()
+	state.Replace(snapshot)
+	for _, service := range state.Services() {
+		if service.Enabled {
+			if err := runCheck(ctx, checker, checkStorage, service); err != nil {
+				log.Printf("check service %s: %v", service.ID, err)
+			}
+		}
 	}
+
+	err = broker.ConsumeUpdates(ctx, func(update serviceconfig.Update) error {
+		if !state.Apply(update.Service) || !update.Service.Enabled {
+			return nil
+		}
+		return runCheck(ctx, checker, checkStorage, update.Service)
+	})
+	if err != nil {
+		log.Fatalf("consume configuration updates: %v", err)
+	}
+}
+
+type resultWriter interface {
+	Write(context.Context, check.Result) error
+}
+
+func runCheck(
+	ctx context.Context,
+	checker *check.Checker,
+	checkStorage resultWriter,
+	service serviceconfig.Service,
+) error {
+	result := checker.Run(ctx, service.URL)
+	if err := checkStorage.Write(ctx, result); err != nil {
+		return fmt.Errorf("store result: %w", err)
+	}
+
+	log.Printf(
+		"checked service=%s url=%s available=%t status=%d response_time_ms=%d",
+		service.ID,
+		service.URL,
+		result.Available,
+		result.StatusCode,
+		result.ResponseTimeMS,
+	)
+	return nil
 }
