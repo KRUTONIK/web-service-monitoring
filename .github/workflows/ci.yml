@@ -217,7 +217,7 @@ jobs:
         run: |
           mkdir -p build/services
 
-          go build -o build/services/api ./services/api
+          go build -o build/services/api ./services/api/cmd/api
           go build -o build/services/checker ./services/checker/cmd/checker
           go build -o build/services/notification ./services/notification
 
