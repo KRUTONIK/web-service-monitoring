@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.2.0 — Prototype
+
+### Added
+
+- minimal end-to-end web-service monitoring scenario
+- service configuration storage in PostgreSQL
+- versioned Protocol Buffers contracts for internal gRPC APIs
+- startup configuration transfer from API Service to Checker Service over gRPC
+- asynchronous configuration updates through RabbitMQ
+- HTTP availability checks and result storage in InfluxDB
+- Metrics Service for reading monitoring results from InfluxDB
+- latest monitoring result REST API
+- minimal Web UI for displaying service status
+- Docker Compose configuration and integration test for the complete prototype
+
+### Changed
+
+- separated metric reading from Checker Service into Metrics Service
+- aligned service communication with the target project architecture
+
 ## v0.1.1 — Infrastructure Integration Tests
 
 ### Added
