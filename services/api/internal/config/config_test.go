@@ -7,6 +7,8 @@ import (
 
 func TestLoadConfiguredValues(t *testing.T) {
 	t.Setenv("API_LISTEN_ADDRESS", ":9090")
+	t.Setenv("POSTGRES_DSN", "postgres://test")
+	t.Setenv("PROTOTYPE_SERVICE_URL", "https://configured.test")
 	t.Setenv("INFLUXDB_URL", "http://influxdb.test")
 	t.Setenv("INFLUXDB_ORG", "test-org")
 	t.Setenv("INFLUXDB_BUCKET", "test-bucket")
@@ -19,6 +21,12 @@ func TestLoadConfiguredValues(t *testing.T) {
 	}
 	if cfg.RequestTimeout != 5*time.Second {
 		t.Fatalf("unexpected request timeout: %s", cfg.RequestTimeout)
+	}
+	if cfg.PostgresDSN != "postgres://test" {
+		t.Fatalf("unexpected PostgreSQL DSN: %s", cfg.PostgresDSN)
+	}
+	if cfg.ServiceURL != "https://configured.test" {
+		t.Fatalf("unexpected prototype service URL: %s", cfg.ServiceURL)
 	}
 	if cfg.InfluxDBURL != "http://influxdb.test" {
 		t.Fatalf("unexpected InfluxDB URL: %s", cfg.InfluxDBURL)
@@ -36,6 +44,8 @@ func TestLoadConfiguredValues(t *testing.T) {
 
 func TestLoadDefaultValues(t *testing.T) {
 	t.Setenv("API_LISTEN_ADDRESS", "")
+	t.Setenv("POSTGRES_DSN", "")
+	t.Setenv("PROTOTYPE_SERVICE_URL", "")
 	t.Setenv("INFLUXDB_URL", "")
 	t.Setenv("INFLUXDB_ORG", "")
 	t.Setenv("INFLUXDB_BUCKET", "")
@@ -45,6 +55,12 @@ func TestLoadDefaultValues(t *testing.T) {
 
 	if cfg.ListenAddress != ":8080" {
 		t.Fatalf("unexpected default listen address: %s", cfg.ListenAddress)
+	}
+	if cfg.PostgresDSN != "postgres://monitoring:monitoring@localhost:5432/monitoring?sslmode=disable" {
+		t.Fatalf("unexpected default PostgreSQL DSN: %s", cfg.PostgresDSN)
+	}
+	if cfg.ServiceURL != "https://example.com" {
+		t.Fatalf("unexpected default prototype service URL: %s", cfg.ServiceURL)
 	}
 	if cfg.InfluxDBURL != "http://localhost:8086" {
 		t.Fatalf("unexpected default InfluxDB URL: %s", cfg.InfluxDBURL)

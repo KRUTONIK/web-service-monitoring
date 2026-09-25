@@ -1,16 +1,28 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/config"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/httpapi"
+	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/serviceconfig"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/storage"
 )
 
 func main() {
 	cfg := config.Load()
+	ctx := context.Background()
+	configRepository, err := serviceconfig.Open(ctx, cfg.PostgresDSN)
+	if err != nil {
+		log.Fatalf("initialize configuration repository: %v", err)
+	}
+	defer configRepository.Close()
+	if err := configRepository.Initialize(ctx, cfg.ServiceURL); err != nil {
+		log.Fatalf("initialize prototype configuration: %v", err)
+	}
+
 	client := &http.Client{Timeout: cfg.RequestTimeout}
 	checkStorage := storage.NewInfluxDB(
 		client,

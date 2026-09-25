@@ -8,6 +8,8 @@ import (
 const (
 	defaultListenAddress = ":8080"
 	defaultTimeout       = 5 * time.Second
+	defaultPostgresDSN   = "postgres://monitoring:monitoring@localhost:5432/monitoring?sslmode=disable"
+	defaultServiceURL    = "https://example.com"
 	defaultInfluxDBURL   = "http://localhost:8086"
 	defaultInfluxDBOrg   = "monitoring"
 	defaultInfluxBucket  = "monitoring"
@@ -17,6 +19,8 @@ const (
 type Config struct {
 	ListenAddress  string
 	RequestTimeout time.Duration
+	PostgresDSN    string
+	ServiceURL     string
 	InfluxDBURL    string
 	InfluxDBOrg    string
 	InfluxDBBucket string
@@ -27,6 +31,8 @@ func Load() Config {
 	return Config{
 		ListenAddress:  valueOrDefault("API_LISTEN_ADDRESS", defaultListenAddress),
 		RequestTimeout: defaultTimeout,
+		PostgresDSN:    valueOrDefault("POSTGRES_DSN", defaultPostgresDSN),
+		ServiceURL:     valueOrDefault("PROTOTYPE_SERVICE_URL", defaultServiceURL),
 		InfluxDBURL:    valueOrDefault("INFLUXDB_URL", defaultInfluxDBURL),
 		InfluxDBOrg:    valueOrDefault("INFLUXDB_ORG", defaultInfluxDBOrg),
 		InfluxDBBucket: valueOrDefault("INFLUXDB_BUCKET", defaultInfluxBucket),
