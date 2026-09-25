@@ -87,7 +87,7 @@ func (influx *InfluxDB) Latest(ctx context.Context) (CheckResult, error) {
 func (influx *InfluxDB) latestQuery() string {
 	return fmt.Sprintf(`from(bucket: "%s")
   |> range(start: -24h)
-  |> filter(fn: (record) => record._measurement == "service_check")
+  |> filter(fn: (r) => r._measurement == "service_check")
   |> pivot(rowKey: ["_time", "service_url"], columnKey: ["_field"], valueColumn: "_value")
   |> sort(columns: ["_time"], desc: true)
   |> limit(n: 1)`, escapeFluxString(influx.bucket))

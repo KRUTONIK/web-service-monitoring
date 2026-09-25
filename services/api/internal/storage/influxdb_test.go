@@ -27,7 +27,7 @@ func TestLatest(t *testing.T) {
 			t.Fatalf("read query: %v", err)
 		}
 		query := string(body)
-		for _, expected := range []string{`from(bucket: "test-bucket")`, `record._measurement == "service_check"`, "|> pivot", "|> limit(n: 1)"} {
+		for _, expected := range []string{`from(bucket: "test-bucket")`, `r._measurement == "service_check"`, "|> pivot", "|> limit(n: 1)"} {
 			if !strings.Contains(query, expected) {
 				t.Errorf("query does not contain %q: %s", expected, query)
 			}
