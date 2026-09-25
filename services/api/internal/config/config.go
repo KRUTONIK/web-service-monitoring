@@ -10,6 +10,7 @@ const (
 	defaultTimeout       = 5 * time.Second
 	defaultPostgresDSN   = "postgres://monitoring:monitoring@localhost:5432/monitoring?sslmode=disable"
 	defaultServiceURL    = "https://example.com"
+	defaultRabbitMQURL   = "amqp://monitoring:monitoring@localhost:5672/"
 	defaultInfluxDBURL   = "http://localhost:8086"
 	defaultInfluxDBOrg   = "monitoring"
 	defaultInfluxBucket  = "monitoring"
@@ -21,6 +22,7 @@ type Config struct {
 	RequestTimeout time.Duration
 	PostgresDSN    string
 	ServiceURL     string
+	RabbitMQURL    string
 	InfluxDBURL    string
 	InfluxDBOrg    string
 	InfluxDBBucket string
@@ -33,6 +35,7 @@ func Load() Config {
 		RequestTimeout: defaultTimeout,
 		PostgresDSN:    valueOrDefault("POSTGRES_DSN", defaultPostgresDSN),
 		ServiceURL:     valueOrDefault("PROTOTYPE_SERVICE_URL", defaultServiceURL),
+		RabbitMQURL:    valueOrDefault("RABBITMQ_URL", defaultRabbitMQURL),
 		InfluxDBURL:    valueOrDefault("INFLUXDB_URL", defaultInfluxDBURL),
 		InfluxDBOrg:    valueOrDefault("INFLUXDB_ORG", defaultInfluxDBOrg),
 		InfluxDBBucket: valueOrDefault("INFLUXDB_BUCKET", defaultInfluxBucket),

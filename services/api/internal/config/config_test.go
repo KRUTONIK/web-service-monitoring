@@ -9,6 +9,7 @@ func TestLoadConfiguredValues(t *testing.T) {
 	t.Setenv("API_LISTEN_ADDRESS", ":9090")
 	t.Setenv("POSTGRES_DSN", "postgres://test")
 	t.Setenv("PROTOTYPE_SERVICE_URL", "https://configured.test")
+	t.Setenv("RABBITMQ_URL", "amqp://rabbitmq.test")
 	t.Setenv("INFLUXDB_URL", "http://influxdb.test")
 	t.Setenv("INFLUXDB_ORG", "test-org")
 	t.Setenv("INFLUXDB_BUCKET", "test-bucket")
@@ -28,6 +29,9 @@ func TestLoadConfiguredValues(t *testing.T) {
 	if cfg.ServiceURL != "https://configured.test" {
 		t.Fatalf("unexpected prototype service URL: %s", cfg.ServiceURL)
 	}
+	if cfg.RabbitMQURL != "amqp://rabbitmq.test" {
+		t.Fatalf("unexpected RabbitMQ URL: %s", cfg.RabbitMQURL)
+	}
 	if cfg.InfluxDBURL != "http://influxdb.test" {
 		t.Fatalf("unexpected InfluxDB URL: %s", cfg.InfluxDBURL)
 	}
@@ -46,6 +50,7 @@ func TestLoadDefaultValues(t *testing.T) {
 	t.Setenv("API_LISTEN_ADDRESS", "")
 	t.Setenv("POSTGRES_DSN", "")
 	t.Setenv("PROTOTYPE_SERVICE_URL", "")
+	t.Setenv("RABBITMQ_URL", "")
 	t.Setenv("INFLUXDB_URL", "")
 	t.Setenv("INFLUXDB_ORG", "")
 	t.Setenv("INFLUXDB_BUCKET", "")
@@ -61,6 +66,9 @@ func TestLoadDefaultValues(t *testing.T) {
 	}
 	if cfg.ServiceURL != "https://example.com" {
 		t.Fatalf("unexpected default prototype service URL: %s", cfg.ServiceURL)
+	}
+	if cfg.RabbitMQURL != "amqp://monitoring:monitoring@localhost:5672/" {
+		t.Fatalf("unexpected default RabbitMQ URL: %s", cfg.RabbitMQURL)
 	}
 	if cfg.InfluxDBURL != "http://localhost:8086" {
 		t.Fatalf("unexpected default InfluxDB URL: %s", cfg.InfluxDBURL)

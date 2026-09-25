@@ -7,6 +7,7 @@ import (
 
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/config"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/httpapi"
+	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/messaging"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/serviceconfig"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/storage"
 )
@@ -21,6 +22,17 @@ func main() {
 	defer configRepository.Close()
 	if err := configRepository.Initialize(ctx, cfg.ServiceURL); err != nil {
 		log.Fatalf("initialize prototype configuration: %v", err)
+	}
+	configBroker, err := messaging.OpenConfigurationBroker(cfg.RabbitMQURL, configRepository)
+	if err != nil {
+		log.Fatalf("initialize configuration messaging: %v", err)
+	}
+	defer configBroker.Close()
+	if err := configBroker.StartSnapshotResponder(ctx); err != nil {
+		log.Fatalf("start configuration snapshot responder: %v", err)
+	}
+	if err := configBroker.PublishCurrentConfiguration(ctx); err != nil {
+		log.Fatalf("publish prototype configuration: %v", err)
 	}
 
 	client := &http.Client{Timeout: cfg.RequestTimeout}
