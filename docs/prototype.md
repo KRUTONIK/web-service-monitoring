@@ -93,15 +93,14 @@ the refresh button.
 | `INFLUXDB_URL` | Checker, Metrics | `http://localhost:8086` |
 | `INFLUXDB_ORG` | Checker, Metrics | `monitoring` |
 | `INFLUXDB_BUCKET` | Checker, Metrics | `monitoring` |
-| `INFLUXDB_TOKEN_FILE` | Checker | path to the generated write-only token |
-| `INFLUXDB_TOKEN_FILE` | Metrics | path to the generated read-only token |
+| `INFLUXDB_TOKEN` | Checker, Metrics | `monitoring-test-token` |
 | `VITE_API_URL` | Web build | `http://localhost:8080` |
 
 Compose replaces database, broker and gRPC addresses with their internal
-service names. The `influx-token-init` container creates two bucket-scoped
-InfluxDB tokens and stores them in a shared Docker volume. Checker mounts the
-write-only token, while Metrics Service mounts the read-only token. The
-Operator token is used only by InfluxDB initialization.
+service names. Checker and Metrics Service use the common development token
+created by InfluxDB initialization. Separate write-only and read-only tokens
+are intentionally left for a later security-hardening stage; they are not
+required to demonstrate the prototype's vertical scenario.
 
 ## Running with Docker
 

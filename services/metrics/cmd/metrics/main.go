@@ -14,17 +14,13 @@ import (
 
 func main() {
 	cfg := config.Load()
-	influxToken, err := cfg.ReadInfluxDBToken()
-	if err != nil {
-		log.Fatalf("load InfluxDB token: %v", err)
-	}
 	listener, err := net.Listen("tcp", cfg.ListenAddress)
 	if err != nil {
 		log.Fatalf("listen on %s: %v", cfg.ListenAddress, err)
 	}
 
 	client := &http.Client{Timeout: cfg.RequestTimeout}
-	reader := storage.NewInfluxDB(client, cfg.InfluxDBURL, cfg.InfluxDBOrg, cfg.InfluxDBBucket, influxToken)
+	reader := storage.NewInfluxDB(client, cfg.InfluxDBURL, cfg.InfluxDBOrg, cfg.InfluxDBBucket, cfg.InfluxDBToken)
 	server := grpc.NewServer()
 	metricsv1.RegisterMetricsServiceServer(server, grpcapi.New(reader))
 

@@ -17,10 +17,6 @@ import (
 
 func main() {
 	cfg := config.Load()
-	influxToken, err := cfg.ReadInfluxDBToken()
-	if err != nil {
-		log.Fatalf("load InfluxDB token: %v", err)
-	}
 	ctx := context.Background()
 	checker := check.New(&http.Client{Timeout: cfg.RequestTimeout})
 
@@ -29,7 +25,7 @@ func main() {
 		cfg.InfluxDBURL,
 		cfg.InfluxDBOrg,
 		cfg.InfluxDBBucket,
-		influxToken,
+		cfg.InfluxDBToken,
 	)
 	broker, err := messaging.Open(cfg.RabbitMQURL)
 	if err != nil {

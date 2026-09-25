@@ -1,22 +1,9 @@
 package config
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 )
-
-func TestReadInfluxDBTokenFromFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "token")
-	if err := os.WriteFile(path, []byte("write-token\n"), 0o600); err != nil {
-		t.Fatalf("write token: %v", err)
-	}
-	token, err := (Config{InfluxDBTokenFile: path}).ReadInfluxDBToken()
-	if err != nil || token != "write-token" {
-		t.Fatalf("unexpected token result: token=%q err=%v", token, err)
-	}
-}
 
 func TestLoadConfiguredValues(t *testing.T) {
 	t.Setenv("RABBITMQ_URL", "amqp://rabbitmq.test")
@@ -25,7 +12,6 @@ func TestLoadConfiguredValues(t *testing.T) {
 	t.Setenv("INFLUXDB_ORG", "test-org")
 	t.Setenv("INFLUXDB_BUCKET", "test-bucket")
 	t.Setenv("INFLUXDB_TOKEN", "test-token")
-	t.Setenv("INFLUXDB_TOKEN_FILE", "")
 
 	cfg := Load()
 
@@ -62,7 +48,6 @@ func TestLoadDefaultValues(t *testing.T) {
 	t.Setenv("INFLUXDB_ORG", "")
 	t.Setenv("INFLUXDB_BUCKET", "")
 	t.Setenv("INFLUXDB_TOKEN", "")
-	t.Setenv("INFLUXDB_TOKEN_FILE", "")
 
 	cfg := Load()
 

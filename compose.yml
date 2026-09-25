@@ -50,9 +50,7 @@ services:
       INFLUXDB_URL: http://influxdb:8086
       INFLUXDB_ORG: monitoring
       INFLUXDB_BUCKET: monitoring
-      INFLUXDB_TOKEN_FILE: /run/influx-tokens/checker-token
-    volumes:
-      - influx-tokens:/run/influx-tokens:ro
+      INFLUXDB_TOKEN: monitoring-test-token
     depends_on:
       api:
         condition: service_healthy
@@ -60,8 +58,6 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      influx-token-init:
-        condition: service_completed_successfully
 
   metrics:
     build:
@@ -74,28 +70,7 @@ services:
       INFLUXDB_URL: http://influxdb:8086
       INFLUXDB_ORG: monitoring
       INFLUXDB_BUCKET: monitoring
-      INFLUXDB_TOKEN_FILE: /run/influx-tokens/metrics-token
-    volumes:
-      - influx-tokens:/run/influx-tokens:ro
-    depends_on:
-      influxdb:
-        condition: service_healthy
-      influx-token-init:
-        condition: service_completed_successfully
-
-  influx-token-init:
-    image: influxdb:2.7-alpine
-    container_name: monitoring-influx-token-init
-    user: "0:0"
-    entrypoint: ["/bin/sh", "/scripts/create-service-tokens.sh"]
-    environment:
-      INFLUX_HOST: http://influxdb:8086
-      INFLUX_ORG: monitoring
-      INFLUX_BUCKET: monitoring
-      INFLUX_TOKEN: monitoring-test-token
-    volumes:
-      - ./deploy/influxdb/create-service-tokens.sh:/scripts/create-service-tokens.sh:ro
-      - influx-tokens:/tokens
+      INFLUXDB_TOKEN: monitoring-test-token
     depends_on:
       influxdb:
         condition: service_healthy
@@ -112,6 +87,3 @@ services:
     depends_on:
       api:
         condition: service_healthy
-
-volumes:
-  influx-tokens:
