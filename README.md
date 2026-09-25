@@ -27,8 +27,8 @@ Open:
 - API health check: http://localhost:8080/health
 - latest check result: http://localhost:8080/api/checks/latest
 
-The Checker Service remains running to receive configuration and result requests
-through RabbitMQ. Restart it to repeat the startup check:
+The Checker Service remains running to receive configuration updates through
+RabbitMQ. Restart it to repeat the startup check:
 
 ```bash
 docker compose restart checker
@@ -50,20 +50,26 @@ The system consists of:
 - Web UI — React
 - API Service — Go
 - Checker Service — Go
+- Metrics Service — Go
 - Notification Service — Go
 - PostgreSQL — configuration and incidents
 - InfluxDB — monitoring results
-- RabbitMQ — communication between microservices
+- RabbitMQ — asynchronous events between microservices
+- gRPC — synchronous internal requests
 
-API Service owns configuration in PostgreSQL. Checker Service owns monitoring
-results in InfluxDB. The services exchange configuration and result requests
-only through RabbitMQ; API Service has no direct access to InfluxDB.
+API Service owns configuration in PostgreSQL. Checker Service writes monitoring
+results to InfluxDB, while Metrics Service provides read access to them. Checker
+requests its startup configuration from API over gRPC, API reads metrics from
+Metrics Service over gRPC, and RabbitMQ carries later configuration updates.
+API Service has no direct access to InfluxDB.
 
 ## Project structure
 
 - `services/api` — API Service
 - `services/checker` — Checker Service
+- `services/metrics` — Metrics Service
 - `services/notification` — Notification Service
+- `contracts` — versioned Protocol Buffers contracts and generated Go code
 - `web` — React Web UI
 - `deploy` — deployment configuration
 - `docs` — project documentation

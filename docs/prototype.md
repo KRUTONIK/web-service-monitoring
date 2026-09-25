@@ -9,29 +9,30 @@ The scenario is:
 
 1. API Service stores one service configuration in PostgreSQL.
 2. On startup, Checker Service requests the configuration snapshot from API
-   Service through RabbitMQ.
+   Service through gRPC.
 3. Checker Service sends an HTTP request to the configured URL, measures the
    response time and determines availability.
-4. Checker Service stores the result in its InfluxDB storage.
+4. Checker Service writes the result to InfluxDB.
 5. Web UI requests the latest result from API Service over REST.
-6. API Service requests the result from Checker Service through RabbitMQ;
-   Checker Service reads InfluxDB and sends the response back through RabbitMQ.
-7. API Service returns the result to Web UI.
+6. API Service requests the result from Metrics Service through gRPC.
+7. Metrics Service reads the result from InfluxDB.
+8. API Service returns the result to Web UI.
 
 ```text
 Web UI --REST--> API Service --SQL--> PostgreSQL
-                    |   ^
-                    |   | RabbitMQ (configuration snapshot and result RPC)
-                    v   |
-                Checker Service --write/read--> InfluxDB
                     |
-                    v
-             Target web service
+                    +--gRPC--> Metrics Service --read--> InfluxDB
+                    |
+                    +--events--> RabbitMQ --> Checker Service
+
+Checker Service --gRPC GetSnapshot--> API Service
+Checker Service --write-------------> InfluxDB
 ```
 
-API Service does not access InfluxDB directly, and Checker Service does not
-access PostgreSQL directly. Notification Service remains outside this prototype
-scenario.
+API Service does not access InfluxDB directly. Checker Service does not access
+PostgreSQL or read monitoring results. Metrics Service has read-only
+responsibility for monitoring data. Notification Service remains outside this
+prototype scenario.
 
 ## Implemented behavior
 
@@ -58,6 +59,14 @@ queued updates. An update whose version is not greater than the snapshot or
 current local version is acknowledged and ignored. This prevents an older
 queued message from rolling back a newer startup snapshot.
 
+Synchronous internal requests use gRPC:
+
+- Checker Service calls `ConfigurationService.GetSnapshot` on API Service;
+- API Service calls `MetricsService.GetLatestCheck` on Metrics Service.
+
+RabbitMQ is used only for asynchronous configuration-update events. It is not
+used as an RPC transport.
+
 API Service provides:
 
 | Method | Path | Result |
@@ -74,17 +83,22 @@ the refresh button.
 | Variable | Service | Default |
 |---|---|---|
 | `API_LISTEN_ADDRESS` | API | `:8080` |
+| `API_GRPC_LISTEN_ADDRESS` | API | `:9091` |
+| `METRICS_GRPC_ADDRESS` | API | `localhost:9092` |
 | `POSTGRES_DSN` | API | local monitoring database |
 | `PROTOTYPE_SERVICE_URL` | API | `https://example.com` |
+| `API_GRPC_ADDRESS` | Checker | `localhost:9091` |
 | `RABBITMQ_URL` | API, Checker | local monitoring broker |
-| `INFLUXDB_URL` | Checker | `http://localhost:8086` |
-| `INFLUXDB_ORG` | Checker | `monitoring` |
-| `INFLUXDB_BUCKET` | Checker | `monitoring` |
-| `INFLUXDB_TOKEN` | Checker | `monitoring-test-token` |
+| `METRICS_GRPC_LISTEN_ADDRESS` | Metrics | `:9092` |
+| `INFLUXDB_URL` | Checker, Metrics | `http://localhost:8086` |
+| `INFLUXDB_ORG` | Checker, Metrics | `monitoring` |
+| `INFLUXDB_BUCKET` | Checker, Metrics | `monitoring` |
+| `INFLUXDB_TOKEN` | Checker, Metrics | `monitoring-test-token` |
 | `VITE_API_URL` | Web build | `http://localhost:8080` |
 
-Compose replaces database and broker addresses with their internal service
-names.
+Compose replaces database, broker and gRPC addresses with their internal
+service names. The prototype uses one InfluxDB token; separate write-only and
+read-only tokens are deferred to deployment hardening.
 
 ## Running with Docker
 
@@ -123,9 +137,9 @@ docker compose down -v
 
 ## Automated verification
 
-Unit tests cover the HTTP checker, versioned configuration state, environment
-configuration, InfluxDB write and query clients, CSV response parsing and API
-handlers.
+Unit tests cover the HTTP checker, versioned configuration state, gRPC service
+adapters, environment configuration, InfluxDB write and query clients, CSV
+response parsing and API handlers.
 
 The full prototype integration test runs through Docker Compose:
 
@@ -133,10 +147,10 @@ The full prototype integration test runs through Docker Compose:
 bash scripts/prototype-test.sh
 ```
 
-The test builds the images, waits for API and Checker readiness, polls until a
-monitoring result is available, validates the returned JSON and checks that the
-Web UI is available. CI runs this scenario after the infrastructure integration
-test.
+The test builds the images, waits for API, Checker and Metrics Service, polls
+until a monitoring result is available, validates the returned JSON and checks
+that the Web UI is available. CI runs this scenario after the infrastructure
+integration test.
 
 ## Prototype limitations
 
