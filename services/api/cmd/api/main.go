@@ -9,7 +9,6 @@ import (
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/httpapi"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/messaging"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/serviceconfig"
-	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/storage"
 )
 
 func main() {
@@ -35,17 +34,9 @@ func main() {
 		log.Fatalf("publish prototype configuration: %v", err)
 	}
 
-	client := &http.Client{Timeout: cfg.RequestTimeout}
-	checkStorage := storage.NewInfluxDB(
-		client,
-		cfg.InfluxDBURL,
-		cfg.InfluxDBOrg,
-		cfg.InfluxDBBucket,
-		cfg.InfluxDBToken,
-	)
 	server := &http.Server{
 		Addr:              cfg.ListenAddress,
-		Handler:           httpapi.New(checkStorage),
+		Handler:           httpapi.New(configBroker),
 		ReadHeaderTimeout: cfg.RequestTimeout,
 	}
 

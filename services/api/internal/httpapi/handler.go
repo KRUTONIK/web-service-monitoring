@@ -6,11 +6,11 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/storage"
+	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/monitoring"
 )
 
 type checkReader interface {
-	Latest(context.Context) (storage.CheckResult, error)
+	Latest(context.Context) (monitoring.Result, error)
 }
 
 type handler struct {
@@ -31,7 +31,7 @@ func (handler *handler) health(writer http.ResponseWriter, _ *http.Request) {
 
 func (handler *handler) latestCheck(writer http.ResponseWriter, request *http.Request) {
 	result, err := handler.checks.Latest(request.Context())
-	if errors.Is(err, storage.ErrNotFound) {
+	if errors.Is(err, monitoring.ErrNotFound) {
 		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "check result not found"})
 		return
 	}

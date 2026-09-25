@@ -9,15 +9,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/storage"
+	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/monitoring"
 )
 
 type stubCheckReader struct {
-	result storage.CheckResult
+	result monitoring.Result
 	err    error
 }
 
-func (stub stubCheckReader) Latest(context.Context) (storage.CheckResult, error) {
+func (stub stubCheckReader) Latest(context.Context) (monitoring.Result, error) {
 	return stub.result, stub.err
 }
 
@@ -37,7 +37,7 @@ func TestHealth(t *testing.T) {
 
 func TestLatestCheck(t *testing.T) {
 	checkedAt := time.Date(2026, time.September, 25, 10, 30, 0, 0, time.UTC)
-	reader := stubCheckReader{result: storage.CheckResult{
+	reader := stubCheckReader{result: monitoring.Result{
 		ServiceURL:     "https://service.test",
 		CheckedAt:      checkedAt,
 		Available:      true,
@@ -64,7 +64,7 @@ func TestLatestCheckNotFound(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/checks/latest", nil)
 	response := httptest.NewRecorder()
 
-	New(stubCheckReader{err: storage.ErrNotFound}).ServeHTTP(response, request)
+	New(stubCheckReader{err: monitoring.ErrNotFound}).ServeHTTP(response, request)
 
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("unexpected status: %d", response.Code)
