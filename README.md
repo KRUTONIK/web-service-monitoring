@@ -61,7 +61,9 @@ API Service owns configuration in PostgreSQL. Checker Service writes monitoring
 results to InfluxDB, while Metrics Service provides read access to them. Checker
 requests its startup configuration from API over gRPC, API reads metrics from
 Metrics Service over gRPC, and RabbitMQ carries later configuration updates.
-API Service has no direct access to InfluxDB.
+API Service has no direct access to InfluxDB. Docker initialization creates a
+write-only InfluxDB token for Checker and a separate read-only token for Metrics
+Service.
 
 ## Project structure
 
