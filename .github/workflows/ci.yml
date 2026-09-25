@@ -178,6 +178,10 @@ jobs:
         shell: bash
         run: bash scripts/integration-test.sh
 
+      - name: Run prototype integration test
+        shell: bash
+        run: bash scripts/prototype-test.sh
+
   build:
     name: Build application
     runs-on: ubuntu-latest
