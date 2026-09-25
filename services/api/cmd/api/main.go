@@ -3,12 +3,16 @@ package main
 import (
 	"context"
 	"log"
+	"net"
 	"net/http"
 
+	configurationv1 "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/configuration/v1"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/config"
+	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/grpcapi"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/httpapi"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/messaging"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/serviceconfig"
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -27,16 +31,31 @@ func main() {
 		log.Fatalf("initialize configuration messaging: %v", err)
 	}
 	defer configBroker.Close()
-	if err := configBroker.StartSnapshotResponder(ctx); err != nil {
-		log.Fatalf("start configuration snapshot responder: %v", err)
-	}
 	if err := configBroker.PublishCurrentConfiguration(ctx); err != nil {
 		log.Fatalf("publish prototype configuration: %v", err)
 	}
+	metricsClient, err := grpcapi.OpenMetricsClient(cfg.MetricsTarget)
+	if err != nil {
+		log.Fatalf("initialize Metrics Service client: %v", err)
+	}
+	defer metricsClient.Close()
+
+	grpcListener, err := net.Listen("tcp", cfg.GRPCAddress)
+	if err != nil {
+		log.Fatalf("listen for gRPC on %s: %v", cfg.GRPCAddress, err)
+	}
+	grpcServer := grpc.NewServer()
+	configurationv1.RegisterConfigurationServiceServer(grpcServer, grpcapi.NewConfigurationServer(configRepository))
+	go func() {
+		log.Printf("API Service gRPC listening on %s", cfg.GRPCAddress)
+		if err := grpcServer.Serve(grpcListener); err != nil {
+			log.Printf("run API Service gRPC server: %v", err)
+		}
+	}()
 
 	server := &http.Server{
 		Addr:              cfg.ListenAddress,
-		Handler:           httpapi.New(configBroker),
+		Handler:           httpapi.New(metricsClient),
 		ReadHeaderTimeout: cfg.RequestTimeout,
 	}
 
