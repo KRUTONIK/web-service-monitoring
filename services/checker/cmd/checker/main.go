@@ -17,16 +17,19 @@ import (
 
 func main() {
 	cfg := config.Load()
+	influxToken, err := cfg.ReadInfluxDBToken()
+	if err != nil {
+		log.Fatalf("load InfluxDB token: %v", err)
+	}
 	ctx := context.Background()
-	client := &http.Client{Timeout: cfg.RequestTimeout}
-	checker := check.New(client)
+	checker := check.New(&http.Client{Timeout: cfg.RequestTimeout})
 
 	checkStorage := storage.NewInfluxDB(
-		client,
+		&http.Client{Timeout: cfg.StorageTimeout},
 		cfg.InfluxDBURL,
 		cfg.InfluxDBOrg,
 		cfg.InfluxDBBucket,
-		cfg.InfluxDBToken,
+		influxToken,
 	)
 	broker, err := messaging.Open(cfg.RabbitMQURL)
 	if err != nil {
