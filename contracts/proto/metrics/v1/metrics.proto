@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package monitoring.metrics.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/metrics/v1;metricsv1";
+
+service MetricsService {
+  rpc GetLatestCheck(GetLatestCheckRequest) returns (GetLatestCheckResponse);
+}
+
+message GetLatestCheckRequest {}
+
+message GetLatestCheckResponse {
+  string service_url = 1;
+  google.protobuf.Timestamp checked_at = 2;
+  bool available = 3;
+  int32 status_code = 4;
+  int64 response_time_ms = 5;
+  string error = 6;
+}
