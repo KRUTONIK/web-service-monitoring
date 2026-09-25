@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"context"
 	"fmt"
+	"time"
 
 	metricsv1 "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/metrics/v1"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/monitoring"
@@ -15,14 +16,15 @@ import (
 type MetricsClient struct {
 	connection *grpc.ClientConn
 	client     metricsv1.MetricsServiceClient
+	timeout    time.Duration
 }
 
-func OpenMetricsClient(address string) (*MetricsClient, error) {
+func OpenMetricsClient(address string, timeout time.Duration) (*MetricsClient, error) {
 	connection, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("create Metrics Service connection: %w", err)
 	}
-	return &MetricsClient{connection: connection, client: metricsv1.NewMetricsServiceClient(connection)}, nil
+	return &MetricsClient{connection: connection, client: metricsv1.NewMetricsServiceClient(connection), timeout: timeout}, nil
 }
 
 func (client *MetricsClient) Close() error {
@@ -30,7 +32,9 @@ func (client *MetricsClient) Close() error {
 }
 
 func (client *MetricsClient) Latest(ctx context.Context) (monitoring.Result, error) {
-	response, err := client.client.GetLatestCheck(ctx, &metricsv1.GetLatestCheckRequest{})
+	requestContext, cancel := context.WithTimeout(ctx, client.timeout)
+	defer cancel()
+	response, err := client.client.GetLatestCheck(requestContext, &metricsv1.GetLatestCheckRequest{})
 	if status.Code(err) == codes.NotFound {
 		return monitoring.Result{}, monitoring.ErrNotFound
 	}

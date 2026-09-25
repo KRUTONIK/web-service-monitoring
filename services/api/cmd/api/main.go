@@ -34,7 +34,7 @@ func main() {
 	if err := configBroker.PublishCurrentConfiguration(ctx); err != nil {
 		log.Fatalf("publish prototype configuration: %v", err)
 	}
-	metricsClient, err := grpcapi.OpenMetricsClient(cfg.MetricsTarget)
+	metricsClient, err := grpcapi.OpenMetricsClient(cfg.MetricsTarget, cfg.RequestTimeout)
 	if err != nil {
 		log.Fatalf("initialize Metrics Service client: %v", err)
 	}
