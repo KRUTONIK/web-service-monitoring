@@ -12,6 +12,10 @@ cleanup() {
     "${COMPOSE[@]}" down -v
 }
 
+service_id() {
+    "${COMPOSE[@]}" ps -q "$1" | head -n 1
+}
+
 trap cleanup EXIT
 
 echo "Starting prototype..."
@@ -19,9 +23,10 @@ echo "Starting prototype..."
 
 echo "Waiting for API Service..."
 for i in {1..60}; do
+    api_id=$(service_id api)
     status=$(docker inspect \
         --format='{{.State.Health.Status}}' \
-        monitoring-api 2>/dev/null || true)
+        "$api_id" 2>/dev/null || true)
 
     if [ "$status" = "healthy" ]; then
         break
@@ -38,9 +43,10 @@ done
 
 echo "Waiting for Checker Service..."
 for i in {1..60}; do
+    checker_id=$(service_id checker)
     status=$(docker inspect \
         --format='{{.State.Status}}' \
-        monitoring-checker 2>/dev/null || true)
+        "$checker_id" 2>/dev/null || true)
 
     if [ "$status" = "running" ]; then
         break
@@ -56,9 +62,10 @@ for i in {1..60}; do
 done
 
 echo "Checking Metrics Service..."
+metrics_id=$(service_id metrics)
 status=$(docker inspect \
     --format='{{.State.Status}}' \
-    monitoring-metrics 2>/dev/null || true)
+    "$metrics_id" 2>/dev/null || true)
 if [ "$status" != "running" ]; then
     echo "Metrics Service is not running"
     "${COMPOSE[@]}" logs metrics
@@ -80,12 +87,12 @@ for i in {1..60}; do
     sleep 2
 done
 
-echo "$result" | jq -e '
-    .service_url == "https://example.com" and
-    .available == true and
-    .status_code == 200 and
-    .response_time_ms >= 0
-' > /dev/null
+node -e '
+const result = JSON.parse(process.argv[1]);
+if (result.service_url !== "http://test-service" || result.available !== true || result.status_code !== 200 || result.response_time_ms < 0) {
+  process.exit(1);
+}
+' "$result"
 
 echo "Checking Web UI..."
 curl --fail --silent http://localhost:5173/ |

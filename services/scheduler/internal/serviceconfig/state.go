@@ -1,6 +1,7 @@
 package serviceconfig
 
 import (
+	"sort"
 	"sync"
 	"time"
 )
@@ -14,7 +15,7 @@ type Service struct {
 }
 
 type Snapshot struct {
-	Services []Service `json:"services"`
+	Services []Service
 }
 
 type Update struct {
@@ -49,18 +50,20 @@ func (state *State) Apply(service Service) bool {
 	if exists && service.Version <= current.Version {
 		return false
 	}
-
 	state.services[service.ID] = service
 	return true
 }
 
-func (state *State) Services() []Service {
+func (state *State) EnabledServices() []Service {
 	state.mutex.RLock()
 	defer state.mutex.RUnlock()
 
 	services := make([]Service, 0, len(state.services))
 	for _, service := range state.services {
-		services = append(services, service)
+		if service.Enabled {
+			services = append(services, service)
+		}
 	}
+	sort.Slice(services, func(left int, right int) bool { return services[left].ID < services[right].ID })
 	return services
 }

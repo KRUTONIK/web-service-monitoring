@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/serviceconfig"
+	"github.com/KRUTONIK/web-service-monitoring/contracts/jobs"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-const configUpdatesQueue = "checker.config.updates"
+const checkJobsQueue = "checker.jobs"
 
 type Broker struct{ connection *amqp.Connection }
 
@@ -28,15 +28,18 @@ func Open(rabbitMQURL string) (*Broker, error) {
 
 func (broker *Broker) Close() error { return broker.connection.Close() }
 
-func (broker *Broker) ConsumeUpdates(ctx context.Context, handler func(serviceconfig.Update) error) error {
+func (broker *Broker) ConsumeJobs(ctx context.Context, handler func(jobs.CheckJob) error) error {
 	channel, err := broker.connection.Channel()
 	if err != nil {
-		return fmt.Errorf("open configuration update channel: %w", err)
+		return fmt.Errorf("open check jobs channel: %w", err)
 	}
 	defer func() { _ = channel.Close() }()
-	deliveries, err := channel.Consume(configUpdatesQueue, "checker-config", false, false, false, false, nil)
+	if err := channel.Qos(1, 0, false); err != nil {
+		return fmt.Errorf("set check job prefetch: %w", err)
+	}
+	deliveries, err := channel.Consume(checkJobsQueue, "", false, false, false, false, nil)
 	if err != nil {
-		return fmt.Errorf("consume configuration updates: %w", err)
+		return fmt.Errorf("consume check jobs: %w", err)
 	}
 
 	for {
@@ -45,23 +48,23 @@ func (broker *Broker) ConsumeUpdates(ctx context.Context, handler func(serviceco
 			return ctx.Err()
 		case delivery, ok := <-deliveries:
 			if !ok {
-				return fmt.Errorf("configuration update channel closed")
+				return fmt.Errorf("check jobs channel closed")
 			}
-			var update serviceconfig.Update
-			if err := json.Unmarshal(delivery.Body, &update); err != nil {
+			var job jobs.CheckJob
+			if err := json.Unmarshal(delivery.Body, &job); err != nil || job.ServiceID == "" || job.ServiceURL == "" {
 				if nackErr := delivery.Nack(false, false); nackErr != nil {
-					return fmt.Errorf("reject invalid configuration update: %w", nackErr)
+					return fmt.Errorf("reject invalid check job: %w", nackErr)
 				}
 				continue
 			}
-			if err := handler(update); err != nil {
+			if err := handler(job); err != nil {
 				if nackErr := delivery.Nack(false, true); nackErr != nil {
-					return fmt.Errorf("requeue configuration update: %w", nackErr)
+					return fmt.Errorf("requeue check job: %w", nackErr)
 				}
 				continue
 			}
 			if err := delivery.Ack(false); err != nil {
-				return fmt.Errorf("acknowledge configuration update: %w", err)
+				return fmt.Errorf("acknowledge check job: %w", err)
 			}
 		}
 	}
@@ -73,8 +76,8 @@ func (broker *Broker) declareQueue() error {
 		return fmt.Errorf("open declaration channel: %w", err)
 	}
 	defer func() { _ = channel.Close() }()
-	if _, err := channel.QueueDeclare(configUpdatesQueue, true, false, false, false, nil); err != nil {
-		return fmt.Errorf("declare queue %s: %w", configUpdatesQueue, err)
+	if _, err := channel.QueueDeclarePassive(checkJobsQueue, true, false, false, false, nil); err != nil {
+		return fmt.Errorf("check jobs queue is unavailable: %w", err)
 	}
 	return nil
 }

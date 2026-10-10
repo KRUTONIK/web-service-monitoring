@@ -31,10 +31,10 @@ func (client *MetricsClient) Close() error {
 	return client.connection.Close()
 }
 
-func (client *MetricsClient) Latest(ctx context.Context) (monitoring.Result, error) {
+func (client *MetricsClient) Latest(ctx context.Context, serviceID string) (monitoring.Result, error) {
 	requestContext, cancel := context.WithTimeout(ctx, client.timeout)
 	defer cancel()
-	response, err := client.client.GetLatestCheck(requestContext, &metricsv1.GetLatestCheckRequest{})
+	response, err := client.client.GetLatestCheck(requestContext, &metricsv1.GetLatestCheckRequest{ServiceId: serviceID})
 	if status.Code(err) == codes.NotFound {
 		return monitoring.Result{}, monitoring.ErrNotFound
 	}
@@ -42,7 +42,7 @@ func (client *MetricsClient) Latest(ctx context.Context) (monitoring.Result, err
 		return monitoring.Result{}, fmt.Errorf("request latest check: %w", err)
 	}
 	return monitoring.Result{
-		ServiceURL: response.ServiceUrl, CheckedAt: response.CheckedAt.AsTime(), Available: response.Available,
+		ServiceID: response.ServiceId, ServiceURL: response.ServiceUrl, CheckedAt: response.CheckedAt.AsTime(), Available: response.Available,
 		StatusCode: int(response.StatusCode), ResponseTimeMS: response.ResponseTimeMs, Error: response.Error,
 	}, nil
 }

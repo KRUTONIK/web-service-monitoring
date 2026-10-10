@@ -13,7 +13,7 @@ import (
 )
 
 type resultReader interface {
-	Latest(context.Context) (metric.Result, error)
+	Latest(context.Context, string) (metric.Result, error)
 }
 
 type Server struct {
@@ -25,8 +25,8 @@ func New(reader resultReader) *Server {
 	return &Server{reader: reader}
 }
 
-func (server *Server) GetLatestCheck(ctx context.Context, _ *metricsv1.GetLatestCheckRequest) (*metricsv1.GetLatestCheckResponse, error) {
-	result, err := server.reader.Latest(ctx)
+func (server *Server) GetLatestCheck(ctx context.Context, request *metricsv1.GetLatestCheckRequest) (*metricsv1.GetLatestCheckResponse, error) {
+	result, err := server.reader.Latest(ctx, request.GetServiceId())
 	if errors.Is(err, storage.ErrNotFound) {
 		return nil, status.Error(codes.NotFound, "check result not found")
 	}
@@ -34,7 +34,7 @@ func (server *Server) GetLatestCheck(ctx context.Context, _ *metricsv1.GetLatest
 		return nil, status.Error(codes.Internal, "failed to read monitoring data")
 	}
 	return &metricsv1.GetLatestCheckResponse{
-		ServiceUrl: result.ServiceURL, CheckedAt: timestamppb.New(result.CheckedAt), Available: result.Available,
+		ServiceId: result.ServiceID, ServiceUrl: result.ServiceURL, CheckedAt: timestamppb.New(result.CheckedAt), Available: result.Available,
 		StatusCode: int32(result.StatusCode), ResponseTimeMs: result.ResponseTimeMS, Error: result.Error,
 	}, nil
 }

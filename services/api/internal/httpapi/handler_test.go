@@ -13,11 +13,13 @@ import (
 )
 
 type stubCheckReader struct {
-	result monitoring.Result
-	err    error
+	result           monitoring.Result
+	err              error
+	requestedService string
 }
 
-func (stub stubCheckReader) Latest(context.Context) (monitoring.Result, error) {
+func (stub *stubCheckReader) Latest(_ context.Context, serviceID string) (monitoring.Result, error) {
+	stub.requestedService = serviceID
 	return stub.result, stub.err
 }
 
@@ -25,7 +27,7 @@ func TestHealth(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/health", nil)
 	response := httptest.NewRecorder()
 
-	New(stubCheckReader{}).ServeHTTP(response, request)
+	New(&stubCheckReader{}).ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d", response.Code)
@@ -37,7 +39,8 @@ func TestHealth(t *testing.T) {
 
 func TestLatestCheck(t *testing.T) {
 	checkedAt := time.Date(2026, time.September, 25, 10, 30, 0, 0, time.UTC)
-	reader := stubCheckReader{result: monitoring.Result{
+	reader := &stubCheckReader{result: monitoring.Result{
+		ServiceID:      "service-1",
 		ServiceURL:     "https://service.test",
 		CheckedAt:      checkedAt,
 		Available:      true,
@@ -55,6 +58,9 @@ func TestLatestCheck(t *testing.T) {
 	if !strings.Contains(response.Body.String(), `"service_url":"https://service.test"`) {
 		t.Fatalf("unexpected response: %s", response.Body.String())
 	}
+	if !strings.Contains(response.Body.String(), `"service_id":"service-1"`) {
+		t.Fatalf("unexpected response: %s", response.Body.String())
+	}
 	if response.Header().Get("Access-Control-Allow-Origin") != "*" {
 		t.Fatalf("missing CORS header: %s", response.Header().Get("Access-Control-Allow-Origin"))
 	}
@@ -64,7 +70,7 @@ func TestLatestCheckNotFound(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/checks/latest", nil)
 	response := httptest.NewRecorder()
 
-	New(stubCheckReader{err: monitoring.ErrNotFound}).ServeHTTP(response, request)
+	New(&stubCheckReader{err: monitoring.ErrNotFound}).ServeHTTP(response, request)
 
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("unexpected status: %d", response.Code)
@@ -75,9 +81,21 @@ func TestLatestCheckStorageFailure(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/checks/latest", nil)
 	response := httptest.NewRecorder()
 
-	New(stubCheckReader{err: errors.New("storage unavailable")}).ServeHTTP(response, request)
+	New(&stubCheckReader{err: errors.New("storage unavailable")}).ServeHTTP(response, request)
 
 	if response.Code != http.StatusBadGateway {
 		t.Fatalf("unexpected status: %d", response.Code)
+	}
+}
+
+func TestLatestCheckFiltersByServiceID(t *testing.T) {
+	reader := &stubCheckReader{result: monitoring.Result{ServiceID: "service-1"}}
+	request := httptest.NewRequest(http.MethodGet, "/api/checks/latest?service_id=service-1", nil)
+	response := httptest.NewRecorder()
+
+	New(reader).ServeHTTP(response, request)
+
+	if reader.requestedService != "service-1" {
+		t.Fatalf("unexpected requested service: %q", reader.requestedService)
 	}
 }
