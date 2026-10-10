@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.3.0 — Monitoring Core
+
+### Added
+
+- Scheduler Service for periodic dispatch of monitoring jobs
+- RabbitMQ job queue for scalable Checker workers
+- `service_id` in monitoring results and Metrics Service responses
+- validation of HTTP/HTTPS service URLs before checks
+- retry logic for temporary failures when writing results to InfluxDB
+- Docker verification of the complete flow with multiple Checker workers
+
+### Changed
+
+- Checker Service now processes jobs from the queue instead of owning service configuration
+- Scheduler Service owns the current configuration snapshot and receives its updates from API Service
+- Docker Compose configuration supports isolated test environments and Checker scaling
+
 ## v0.2.0 — Prototype
 
 ### Added
