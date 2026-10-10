@@ -64,7 +64,7 @@ func lineProtocol(result check.Result) string {
 	if result.Error != "" {
 		fields = append(fields, fmt.Sprintf("error=\"%s\"", escapeFieldString(result.Error)))
 	}
-	return fmt.Sprintf("%s,service_url=%s %s %d", measurementName, escapeTag(result.ServiceURL), strings.Join(fields, ","), result.CheckedAt.UnixNano())
+	return fmt.Sprintf("%s,service_id=%s,service_url=%s %s %d", measurementName, escapeTag(result.ServiceID), escapeTag(result.ServiceURL), strings.Join(fields, ","), result.CheckedAt.UnixNano())
 }
 
 func escapeTag(value string) string {

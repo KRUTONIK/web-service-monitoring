@@ -24,6 +24,7 @@ const (
 
 type GetLatestCheckRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServiceId     string                 `protobuf:"bytes,1,opt,name=service_id,json=serviceId,proto3" json:"service_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -58,6 +59,13 @@ func (*GetLatestCheckRequest) Descriptor() ([]byte, []int) {
 	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{0}
 }
 
+func (x *GetLatestCheckRequest) GetServiceId() string {
+	if x != nil {
+		return x.ServiceId
+	}
+	return ""
+}
+
 type GetLatestCheckResponse struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	ServiceUrl     string                 `protobuf:"bytes,1,opt,name=service_url,json=serviceUrl,proto3" json:"service_url,omitempty"`
@@ -66,6 +74,7 @@ type GetLatestCheckResponse struct {
 	StatusCode     int32                  `protobuf:"varint,4,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
 	ResponseTimeMs int64                  `protobuf:"varint,5,opt,name=response_time_ms,json=responseTimeMs,proto3" json:"response_time_ms,omitempty"`
 	Error          string                 `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`
+	ServiceId      string                 `protobuf:"bytes,7,opt,name=service_id,json=serviceId,proto3" json:"service_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -142,12 +151,21 @@ func (x *GetLatestCheckResponse) GetError() string {
 	return ""
 }
 
+func (x *GetLatestCheckResponse) GetServiceId() string {
+	if x != nil {
+		return x.ServiceId
+	}
+	return ""
+}
+
 var File_monitoring_metrics_v1_metrics_proto protoreflect.FileDescriptor
 
 const file_monitoring_metrics_v1_metrics_proto_rawDesc = "" +
 	"\n" +
-	"#monitoring/metrics/v1/metrics.proto\x12\x15monitoring.metrics.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x17\n" +
-	"\x15GetLatestCheckRequest\"\xf3\x01\n" +
+	"#monitoring/metrics/v1/metrics.proto\x12\x15monitoring.metrics.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"6\n" +
+	"\x15GetLatestCheckRequest\x12\x1d\n" +
+	"\n" +
+	"service_id\x18\x01 \x01(\tR\tserviceId\"\x92\x02\n" +
 	"\x16GetLatestCheckResponse\x12\x1f\n" +
 	"\vservice_url\x18\x01 \x01(\tR\n" +
 	"serviceUrl\x129\n" +
@@ -157,7 +175,9 @@ const file_monitoring_metrics_v1_metrics_proto_rawDesc = "" +
 	"\vstatus_code\x18\x04 \x01(\x05R\n" +
 	"statusCode\x12(\n" +
 	"\x10response_time_ms\x18\x05 \x01(\x03R\x0eresponseTimeMs\x12\x14\n" +
-	"\x05error\x18\x06 \x01(\tR\x05error2\x7f\n" +
+	"\x05error\x18\x06 \x01(\tR\x05error\x12\x1d\n" +
+	"\n" +
+	"service_id\x18\a \x01(\tR\tserviceId2\x7f\n" +
 	"\x0eMetricsService\x12m\n" +
 	"\x0eGetLatestCheck\x12,.monitoring.metrics.v1.GetLatestCheckRequest\x1a-.monitoring.metrics.v1.GetLatestCheckResponseB]Z[github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/metrics/v1;metricsv1b\x06proto3"
 

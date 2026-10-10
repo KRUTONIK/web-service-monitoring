@@ -84,7 +84,7 @@ func runCheck(
 	checkStorage resultWriter,
 	service serviceconfig.Service,
 ) error {
-	result := checker.Run(ctx, service.URL)
+	result := checker.Run(ctx, service.ID, service.URL)
 	if err := checkStorage.Write(ctx, result); err != nil {
 		return fmt.Errorf("store result: %w", err)
 	}

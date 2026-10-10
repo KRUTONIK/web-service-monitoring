@@ -24,11 +24,11 @@ func TestWriteCheckResult(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result := check.Result{ServiceURL: "https://service.test/path?a=b,c", CheckedAt: time.Unix(123, 456).UTC(), Available: false, StatusCode: 503, ResponseTimeMS: 27, Error: `request failed: "temporary"`}
+	result := check.Result{ServiceID: "service-1", ServiceURL: "https://service.test/path?a=b,c", CheckedAt: time.Unix(123, 456).UTC(), Available: false, StatusCode: 503, ResponseTimeMS: 27, Error: `request failed: "temporary"`}
 	if err := NewInfluxDB(server.Client(), server.URL, "org", "bucket", "token").Write(context.Background(), result); err != nil {
 		t.Fatalf("write result: %v", err)
 	}
-	expected := `service_check,service_url=https://service.test/path?a\=b\,c available=false,status_code=503i,response_time_ms=27i,error="request failed: \"temporary\"" 123000000456`
+	expected := `service_check,service_id=service-1,service_url=https://service.test/path?a\=b\,c available=false,status_code=503i,response_time_ms=27i,error="request failed: \"temporary\"" 123000000456`
 	if receivedBody != expected {
 		t.Fatalf("unexpected line protocol:\nwant: %s\ngot:  %s", expected, receivedBody)
 	}

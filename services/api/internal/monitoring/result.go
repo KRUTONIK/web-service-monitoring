@@ -8,6 +8,7 @@ import (
 var ErrNotFound = errors.New("check result not found")
 
 type Result struct {
+	ServiceID      string    `json:"service_id"`
 	ServiceURL     string    `json:"service_url"`
 	CheckedAt      time.Time `json:"checked_at"`
 	Available      bool      `json:"available"`

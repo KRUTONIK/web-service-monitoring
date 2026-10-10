@@ -9,11 +9,13 @@ import (
 )
 
 var (
+	ErrMissingServiceID  = errors.New("service ID is required")
 	ErrMissingHost       = errors.New("service URL host is required")
 	ErrUnsupportedScheme = errors.New("service URL scheme must be http or https")
 )
 
 type Result struct {
+	ServiceID      string    `json:"service_id"`
 	ServiceURL     string    `json:"service_url"`
 	CheckedAt      time.Time `json:"checked_at"`
 	Available      bool      `json:"available"`
@@ -30,10 +32,15 @@ func New(client *http.Client) *Checker {
 	return &Checker{client: client}
 }
 
-func (checker *Checker) Run(ctx context.Context, serviceURL string) Result {
+func (checker *Checker) Run(ctx context.Context, serviceID string, serviceURL string) Result {
 	result := Result{
+		ServiceID:  serviceID,
 		ServiceURL: serviceURL,
 		CheckedAt:  time.Now().UTC(),
+	}
+	if serviceID == "" {
+		result.Error = ErrMissingServiceID.Error()
+		return result
 	}
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, serviceURL, nil)
