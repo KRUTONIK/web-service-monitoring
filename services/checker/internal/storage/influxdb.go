@@ -8,11 +8,17 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/check"
 )
 
 const measurementName = "service_check"
+
+const (
+	maxWriteAttempts = 3
+	retryBaseDelay   = 50 * time.Millisecond
+)
 
 type InfluxDB struct {
 	client  *http.Client
@@ -27,9 +33,30 @@ func NewInfluxDB(client *http.Client, baseURL string, org string, bucket string,
 }
 
 func (influx *InfluxDB) Write(ctx context.Context, result check.Result) error {
+	for attempt := 1; attempt <= maxWriteAttempts; attempt++ {
+		retryable, err := influx.writeOnce(ctx, result)
+		if err == nil {
+			return nil
+		}
+		if !retryable || attempt == maxWriteAttempts {
+			return err
+		}
+
+		delay := retryBaseDelay * time.Duration(attempt)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+
+	return nil
+}
+
+func (influx *InfluxDB) writeOnce(ctx context.Context, result check.Result) (bool, error) {
 	endpoint, err := url.Parse(influx.baseURL + "/api/v2/write")
 	if err != nil {
-		return fmt.Errorf("parse InfluxDB URL: %w", err)
+		return false, fmt.Errorf("parse InfluxDB URL: %w", err)
 	}
 	query := endpoint.Query()
 	query.Set("org", influx.org)
@@ -39,20 +66,24 @@ func (influx *InfluxDB) Write(ctx context.Context, result check.Result) error {
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewBufferString(lineProtocol(result)))
 	if err != nil {
-		return fmt.Errorf("create InfluxDB request: %w", err)
+		return false, fmt.Errorf("create InfluxDB request: %w", err)
 	}
 	request.Header.Set("Authorization", "Token "+influx.token)
 	request.Header.Set("Content-Type", "text/plain; charset=utf-8")
 	response, err := influx.client.Do(request)
 	if err != nil {
-		return fmt.Errorf("write result to InfluxDB: %w", err)
+		if ctx.Err() != nil {
+			return false, ctx.Err()
+		}
+		return true, fmt.Errorf("write result to InfluxDB: %w", err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusNoContent {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 1024))
-		return fmt.Errorf("InfluxDB returned %s: %s", response.Status, strings.TrimSpace(string(body)))
+		return response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= http.StatusInternalServerError,
+			fmt.Errorf("InfluxDB returned %s: %s", response.Status, strings.TrimSpace(string(body)))
 	}
-	return nil
+	return false, nil
 }
 
 func lineProtocol(result check.Result) string {
