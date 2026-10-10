@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	configurationv1 "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/configuration/v1"
-	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/serviceconfig"
+	"github.com/KRUTONIK/web-service-monitoring/services/scheduler/internal/serviceconfig"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -34,10 +34,7 @@ func (client *ConfigurationClient) Snapshot(ctx context.Context) (serviceconfig.
 	}
 	snapshot := serviceconfig.Snapshot{Services: make([]serviceconfig.Service, 0, len(response.Services))}
 	for _, service := range response.Services {
-		snapshot.Services = append(snapshot.Services, serviceconfig.Service{
-			ID: service.Id, URL: service.Url, Enabled: service.Enabled, Version: service.Version,
-			UpdatedAt: service.UpdatedAt.AsTime(),
-		})
+		snapshot.Services = append(snapshot.Services, serviceconfig.Service{ID: service.Id, URL: service.Url, Enabled: service.Enabled, Version: service.Version, UpdatedAt: service.UpdatedAt.AsTime()})
 	}
 	return snapshot, nil
 }

@@ -9,7 +9,6 @@ const (
 	defaultTimeout        = 5 * time.Second
 	defaultStorageTimeout = 15 * time.Second
 	defaultRabbitMQURL    = "amqp://monitoring:monitoring@localhost:5672/"
-	defaultAPITarget      = "localhost:9091"
 	defaultInfluxDBURL    = "http://localhost:8086"
 	defaultInfluxDBOrg    = "monitoring"
 	defaultInfluxDBBucket = "monitoring"
@@ -20,7 +19,6 @@ type Config struct {
 	RequestTimeout time.Duration
 	StorageTimeout time.Duration
 	RabbitMQURL    string
-	APITarget      string
 	InfluxDBURL    string
 	InfluxDBOrg    string
 	InfluxDBBucket string
@@ -32,7 +30,6 @@ func Load() Config {
 		RequestTimeout: defaultTimeout,
 		StorageTimeout: defaultStorageTimeout,
 		RabbitMQURL:    valueOrDefault("RABBITMQ_URL", defaultRabbitMQURL),
-		APITarget:      valueOrDefault("API_GRPC_ADDRESS", defaultAPITarget),
 		InfluxDBURL:    valueOrDefault("INFLUXDB_URL", defaultInfluxDBURL),
 		InfluxDBOrg:    valueOrDefault("INFLUXDB_ORG", defaultInfluxDBOrg),
 		InfluxDBBucket: valueOrDefault("INFLUXDB_BUCKET", defaultInfluxDBBucket),

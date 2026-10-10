@@ -8,24 +8,25 @@ selected technology stack before implementation of the monitoring core.
 The scenario is:
 
 1. API Service stores one service configuration in PostgreSQL.
-2. On startup, Checker Service requests the configuration snapshot from API
+2. On startup, Scheduler Service requests the configuration snapshot from API
    Service through gRPC.
-3. Checker Service sends an HTTP request to the configured URL, measures the
+3. Scheduler Service sends check jobs through RabbitMQ at the configured
+   interval.
+4. Checker Service sends an HTTP request to the configured URL, measures the
    response time and determines availability.
-4. Checker Service writes the result to InfluxDB.
-5. Web UI requests the latest result from API Service over REST.
-6. API Service requests the result from Metrics Service through gRPC.
-7. Metrics Service reads the result from InfluxDB.
-8. API Service returns the result to Web UI.
+5. Checker Service writes the result to InfluxDB.
+6. Web UI requests the latest result from API Service over REST.
+7. API Service requests the result from Metrics Service through gRPC.
+8. Metrics Service reads the result from InfluxDB.
+9. API Service returns the result to Web UI.
 
 ```text
 Web UI --REST--> API Service --SQL--> PostgreSQL
                     |
                     +--gRPC--> Metrics Service --read--> InfluxDB
                     |
-                    +--events--> RabbitMQ --> Checker Service
+                    +--events--> RabbitMQ --> Scheduler Service --> RabbitMQ --> Checker workers
 
-Checker Service --gRPC GetSnapshot--> API Service
 Checker Service --write-------------> InfluxDB
 ```
 
@@ -48,12 +49,15 @@ Checker Service records:
 HTTP responses from `200` through `299` are treated as available. Network
 errors, timeouts and other response codes are treated as unavailable.
 
-Checker Service remains running after the initial check. It consumes durable
-configuration-update messages and performs another check when it receives a
-newer enabled configuration. Periodic scheduling belongs to the
-monitoring-core stage.
+Scheduler Service receives a configuration snapshot first and then consumes
+durable configuration-update messages. It ignores stale versions and schedules
+enabled services at `SCHEDULER_INTERVAL`. Jobs are sent to a durable shared
+queue; several Checker instances can consume it as competing consumers.
+Checker acknowledges a job only after the result has been stored. Failed
+processing is requeued, while the queue is bounded by length and job lifetime
+to prevent stale tasks from accumulating.
 
-Each configuration has a monotonically increasing `version`. Checker Service
+Each configuration has a monotonically increasing `version`. Scheduler Service
 first replaces its local state with the startup snapshot and then consumes
 queued updates. An update whose version is not greater than the snapshot or
 current local version is acknowledged and ignored. This prevents an older
@@ -61,11 +65,11 @@ queued message from rolling back a newer startup snapshot.
 
 Synchronous internal requests use gRPC:
 
-- Checker Service calls `ConfigurationService.GetSnapshot` on API Service;
+- Scheduler Service calls `ConfigurationService.GetSnapshot` on API Service;
 - API Service calls `MetricsService.GetLatestCheck` on Metrics Service.
 
-RabbitMQ is used only for asynchronous configuration-update events. It is not
-used as an RPC transport.
+RabbitMQ is used for asynchronous configuration-update events and check jobs.
+It is not used as an RPC transport.
 
 API Service provides:
 
@@ -86,9 +90,10 @@ the refresh button.
 | `API_GRPC_LISTEN_ADDRESS` | API | `:9091` |
 | `METRICS_GRPC_ADDRESS` | API | `localhost:9092` |
 | `POSTGRES_DSN` | API | local monitoring database |
-| `PROTOTYPE_SERVICE_URL` | API | `https://example.com` |
-| `API_GRPC_ADDRESS` | Checker | `localhost:9091` |
-| `RABBITMQ_URL` | API, Checker | local monitoring broker |
+| `PROTOTYPE_SERVICE_URL` | API | `http://test-service` in Compose |
+| `API_GRPC_ADDRESS` | Scheduler | `localhost:9091` |
+| `SCHEDULER_INTERVAL` | Scheduler | `1m` |
+| `RABBITMQ_URL` | API, Scheduler, Checker | local monitoring broker |
 | `METRICS_GRPC_LISTEN_ADDRESS` | Metrics | `:9092` |
 | `INFLUXDB_URL` | Checker, Metrics | `http://localhost:8086` |
 | `INFLUXDB_ORG` | Checker, Metrics | `monitoring` |
@@ -110,19 +115,19 @@ Build and start all components:
 docker compose up --build
 ```
 
-Checker Service should remain in the `running` state so it can consume RabbitMQ
-messages.
+Scheduler and Checker Service should remain in the `running` state so checks
+can be published and consumed automatically.
+
+Several Checker workers can share the same job queue:
+
+```bash
+docker compose up --scale checker=2
+```
 
 Inspect the result:
 
 ```bash
 curl http://localhost:8080/api/checks/latest
-```
-
-Repeat the startup check:
-
-```bash
-docker compose restart checker
 ```
 
 Stop all services and preserve InfluxDB data:
@@ -157,9 +162,9 @@ integration test.
 ## Prototype limitations
 
 - only one URL is seeded through the environment;
-- the check is executed on startup or configuration update, not periodically;
+- one global monitoring interval is used; per-service intervals are deferred;
 - only the latest result is available through the API;
 - there is no service-management interface;
 - incidents, analytics and notifications are not implemented;
-- authentication and production secret management are outside the prototype
+- authentication and production secret management are outside the current
   scope.

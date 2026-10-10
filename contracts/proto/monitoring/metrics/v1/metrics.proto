@@ -10,7 +10,9 @@ service MetricsService {
   rpc GetLatestCheck(GetLatestCheckRequest) returns (GetLatestCheckResponse);
 }
 
-message GetLatestCheckRequest {}
+message GetLatestCheckRequest {
+  string service_id = 1;
+}
 
 message GetLatestCheckResponse {
   string service_url = 1;
@@ -19,4 +21,5 @@ message GetLatestCheckResponse {
   int32 status_code = 4;
   int64 response_time_ms = 5;
   string error = 6;
+  string service_id = 7;
 }

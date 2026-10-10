@@ -10,7 +10,7 @@ import (
 )
 
 type checkReader interface {
-	Latest(context.Context) (monitoring.Result, error)
+	Latest(context.Context, string) (monitoring.Result, error)
 }
 
 type handler struct {
@@ -30,7 +30,7 @@ func (handler *handler) health(writer http.ResponseWriter, _ *http.Request) {
 }
 
 func (handler *handler) latestCheck(writer http.ResponseWriter, request *http.Request) {
-	result, err := handler.checks.Latest(request.Context())
+	result, err := handler.checks.Latest(request.Context(), request.URL.Query().Get("service_id"))
 	if errors.Is(err, monitoring.ErrNotFound) {
 		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "check result not found"})
 		return

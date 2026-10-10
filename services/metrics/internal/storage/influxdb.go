@@ -30,7 +30,7 @@ func NewInfluxDB(client *http.Client, baseURL string, org string, bucket string,
 	return &InfluxDB{client: client, baseURL: strings.TrimRight(baseURL, "/"), org: org, bucket: bucket, token: token}
 }
 
-func (influx *InfluxDB) Latest(ctx context.Context) (metric.Result, error) {
+func (influx *InfluxDB) Latest(ctx context.Context, serviceID string) (metric.Result, error) {
 	endpoint, err := url.Parse(influx.baseURL + "/api/v2/query")
 	if err != nil {
 		return metric.Result{}, fmt.Errorf("parse InfluxDB URL: %w", err)
@@ -39,7 +39,7 @@ func (influx *InfluxDB) Latest(ctx context.Context) (metric.Result, error) {
 	query.Set("org", influx.org)
 	endpoint.RawQuery = query.Encode()
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewBufferString(influx.latestQuery()))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewBufferString(influx.latestQuery(serviceID)))
 	if err != nil {
 		return metric.Result{}, fmt.Errorf("create InfluxDB query request: %w", err)
 	}
@@ -64,13 +64,18 @@ func (influx *InfluxDB) Latest(ctx context.Context) (metric.Result, error) {
 	return result, nil
 }
 
-func (influx *InfluxDB) latestQuery() string {
+func (influx *InfluxDB) latestQuery(serviceID string) string {
+	serviceFilter := ""
+	if serviceID != "" {
+		serviceFilter = fmt.Sprintf("\n  |> filter(fn: (r) => r.service_id == \"%s\")", escapeFluxString(serviceID))
+	}
 	return fmt.Sprintf(`from(bucket: "%s")
   |> range(start: -24h)
   |> filter(fn: (r) => r._measurement == "service_check")
-  |> pivot(rowKey: ["_time", "service_url"], columnKey: ["_field"], valueColumn: "_value")
+%s
+  |> pivot(rowKey: ["_time", "service_id", "service_url"], columnKey: ["_field"], valueColumn: "_value")
   |> sort(columns: ["_time"], desc: true)
-  |> limit(n: 1)`, escapeFluxString(influx.bucket))
+  |> limit(n: 1)`, escapeFluxString(influx.bucket), serviceFilter)
 }
 
 func parseLatestResult(reader io.Reader) (metric.Result, error) {
@@ -121,7 +126,7 @@ func parseLatestResult(reader io.Reader) (metric.Result, error) {
 	}
 
 	return metric.Result{
-		ServiceURL: values["service_url"], CheckedAt: checkedAt, Available: available,
+		ServiceID: values["service_id"], ServiceURL: values["service_url"], CheckedAt: checkedAt, Available: available,
 		StatusCode: statusCode, ResponseTimeMS: responseTime, Error: values["error"],
 	}, nil
 }

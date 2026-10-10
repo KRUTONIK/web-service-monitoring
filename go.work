@@ -6,4 +6,5 @@ use (
 	./services/checker
 	./services/metrics
 	./services/notification
+	./services/scheduler
 )
