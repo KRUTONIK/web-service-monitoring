@@ -2,14 +2,17 @@ package check
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestRunAvailable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		time.Sleep(5 * time.Millisecond)
 		writer.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
@@ -30,6 +33,9 @@ func TestRunAvailable(t *testing.T) {
 	}
 	if result.CheckedAt.IsZero() {
 		t.Fatal("expected check timestamp to be set")
+	}
+	if result.ResponseTimeMS <= 0 {
+		t.Fatalf("expected measured response time, got %d ms", result.ResponseTimeMS)
 	}
 }
 
@@ -82,5 +88,50 @@ func TestRunInvalidAddress(t *testing.T) {
 	}
 	if result.Error == "" {
 		t.Fatal("expected invalid address error")
+	}
+}
+
+func TestRunNetworkError(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("open local listener: %v", err)
+	}
+	address := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatalf("close local listener: %v", err)
+	}
+
+	result := New(&http.Client{Timeout: time.Second}).Run(context.Background(), "http://"+address)
+
+	if result.Available {
+		t.Fatal("expected unavailable service after network error")
+	}
+	if result.StatusCode != 0 {
+		t.Fatalf("expected no HTTP status, got %d", result.StatusCode)
+	}
+	if result.Error == "" {
+		t.Fatal("expected network error")
+	}
+}
+
+func TestRunRejectsUnsupportedScheme(t *testing.T) {
+	result := New(&http.Client{}).Run(context.Background(), "ftp://example.com/file")
+
+	if result.Available {
+		t.Fatal("expected unsupported scheme to be unavailable")
+	}
+	if !strings.Contains(result.Error, ErrUnsupportedScheme.Error()) {
+		t.Fatalf("expected unsupported scheme error, got %q", result.Error)
+	}
+}
+
+func TestRunRejectsAddressWithoutHost(t *testing.T) {
+	result := New(&http.Client{}).Run(context.Background(), "http:")
+
+	if result.Available {
+		t.Fatal("expected address without host to be unavailable")
+	}
+	if result.Error != ErrMissingHost.Error() {
+		t.Fatalf("expected missing host error, got %q", result.Error)
 	}
 }
