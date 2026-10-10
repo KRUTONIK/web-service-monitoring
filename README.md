@@ -27,11 +27,13 @@ Open:
 - API health check: http://localhost:8080/health
 - latest check result: http://localhost:8080/api/checks/latest
 
-The Checker Service remains running to receive configuration updates through
-RabbitMQ. Restart it to repeat the startup check:
+Scheduler Service creates checks automatically. Checker Service remains running
+as a worker and receives jobs through RabbitMQ.
+
+Additional Checker workers can be started when needed:
 
 ```bash
-docker compose restart checker
+docker compose up --scale checker=2
 ```
 
 Stop the prototype while preserving stored data:
@@ -49,6 +51,7 @@ The system consists of:
 
 - Web UI — React
 - API Service — Go
+- Scheduler Service — Go
 - Checker Service — Go
 - Metrics Service — Go
 - Notification Service — Go
@@ -57,10 +60,11 @@ The system consists of:
 - RabbitMQ — asynchronous events between microservices
 - gRPC — synchronous internal requests
 
-API Service owns configuration in PostgreSQL. Checker Service writes monitoring
-results to InfluxDB, while Metrics Service provides read access to them. Checker
-requests its startup configuration from API over gRPC, API reads metrics from
-Metrics Service over gRPC, and RabbitMQ carries later configuration updates.
+API Service owns configuration in PostgreSQL. Scheduler Service requests its
+startup configuration from API over gRPC, receives later configuration updates
+through RabbitMQ and sends check jobs to Checker workers. Checker Service writes
+monitoring results to InfluxDB, while Metrics Service provides read access to
+them. API reads metrics from Metrics Service over gRPC.
 API Service has no direct access to InfluxDB. Docker initialization creates a
 single InfluxDB token for the prototype. Separate read and write credentials
 are deferred until the production-hardening stage.
@@ -68,6 +72,7 @@ are deferred until the production-hardening stage.
 ## Project structure
 
 - `services/api` — API Service
+- `services/scheduler` — Scheduler Service
 - `services/checker` — Checker Service
 - `services/metrics` — Metrics Service
 - `services/notification` — Notification Service

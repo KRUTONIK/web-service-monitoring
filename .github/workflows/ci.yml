@@ -71,6 +71,7 @@ jobs:
             contracts/go.mod
             services/metrics/go.mod
             services/notification/go.mod
+            services/scheduler/go.mod
 
       - name: Check formatting
         run: |
@@ -88,6 +89,7 @@ jobs:
           go vet ./services/checker/...
           go vet ./services/metrics/...
           go vet ./services/notification/...
+          go vet ./services/scheduler/...
 
       - name: Run Go tests with coverage
         run: |
@@ -95,6 +97,7 @@ jobs:
           go test -coverprofile=services/checker/coverage.out ./services/checker/...
           go test -coverprofile=services/metrics/coverage.out ./services/metrics/...
           go test -coverprofile=services/notification/coverage.out ./services/notification/...
+          go test -coverprofile=services/scheduler/coverage.out ./services/scheduler/...
 
       - name: Show coverage
         run: |
@@ -110,6 +113,9 @@ jobs:
           echo "Metrics Service:"
           go tool cover -func=services/metrics/coverage.out
 
+          echo "Scheduler Service:"
+          go tool cover -func=services/scheduler/coverage.out
+
       - name: Upload coverage reports
         uses: actions/upload-artifact@v6
         with:
@@ -119,6 +125,7 @@ jobs:
             services/checker/coverage.out
             services/metrics/coverage.out
             services/notification/coverage.out
+            services/scheduler/coverage.out
 
   web-quality:
     name: Web quality
@@ -158,6 +165,7 @@ jobs:
           - services/checker
           - services/metrics
           - services/notification
+          - services/scheduler
 
     steps:
       - name: Checkout repository
@@ -216,6 +224,7 @@ jobs:
             contracts/go.mod
             services/metrics/go.mod
             services/notification/go.mod
+            services/scheduler/go.mod
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -236,6 +245,7 @@ jobs:
           go build -o build/services/checker ./services/checker/cmd/checker
           go build -o build/services/metrics ./services/metrics/cmd/metrics
           go build -o build/services/notification ./services/notification
+          go build -o build/services/scheduler ./services/scheduler/cmd/scheduler
 
       - name: Build Web UI
         working-directory: web
@@ -275,6 +285,7 @@ jobs:
             contracts/go.mod
             services/metrics/go.mod
             services/notification/go.mod
+            services/scheduler/go.mod
 
       - name: Install complexity analyzer
         run: go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
@@ -294,6 +305,7 @@ jobs:
             ./services/checker/... \
             ./services/metrics/... \
             ./services/notification/... \
+            ./services/scheduler/... \
             > metrics/generated/tests.json
 
           TEST_EXIT=$?

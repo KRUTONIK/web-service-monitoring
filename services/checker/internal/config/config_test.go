@@ -7,7 +7,6 @@ import (
 
 func TestLoadConfiguredValues(t *testing.T) {
 	t.Setenv("RABBITMQ_URL", "amqp://rabbitmq.test")
-	t.Setenv("API_GRPC_ADDRESS", "api.test:9091")
 	t.Setenv("INFLUXDB_URL", "http://influxdb.test")
 	t.Setenv("INFLUXDB_ORG", "test-org")
 	t.Setenv("INFLUXDB_BUCKET", "test-bucket")
@@ -23,9 +22,6 @@ func TestLoadConfiguredValues(t *testing.T) {
 	}
 	if cfg.RabbitMQURL != "amqp://rabbitmq.test" {
 		t.Fatalf("unexpected RabbitMQ URL: %s", cfg.RabbitMQURL)
-	}
-	if cfg.APITarget != "api.test:9091" {
-		t.Fatalf("unexpected API gRPC address: %s", cfg.APITarget)
 	}
 	if cfg.InfluxDBURL != "http://influxdb.test" {
 		t.Fatalf("unexpected InfluxDB URL: %s", cfg.InfluxDBURL)
@@ -43,7 +39,6 @@ func TestLoadConfiguredValues(t *testing.T) {
 
 func TestLoadDefaultValues(t *testing.T) {
 	t.Setenv("RABBITMQ_URL", "")
-	t.Setenv("API_GRPC_ADDRESS", "")
 	t.Setenv("INFLUXDB_URL", "")
 	t.Setenv("INFLUXDB_ORG", "")
 	t.Setenv("INFLUXDB_BUCKET", "")
@@ -53,9 +48,6 @@ func TestLoadDefaultValues(t *testing.T) {
 
 	if cfg.RabbitMQURL != "amqp://monitoring:monitoring@localhost:5672/" {
 		t.Fatalf("unexpected default RabbitMQ URL: %s", cfg.RabbitMQURL)
-	}
-	if cfg.APITarget != "localhost:9091" {
-		t.Fatalf("unexpected default API gRPC address: %s", cfg.APITarget)
 	}
 	if cfg.InfluxDBURL != "http://localhost:8086" {
 		t.Fatalf("unexpected default InfluxDB URL: %s", cfg.InfluxDBURL)

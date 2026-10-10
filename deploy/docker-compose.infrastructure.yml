@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: monitoring-postgres
     environment:
       POSTGRES_DB: monitoring
       POSTGRES_USER: monitoring
@@ -23,7 +22,6 @@ services:
 
   rabbitmq:
     image: rabbitmq:4-management-alpine
-    container_name: monitoring-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: monitoring
       RABBITMQ_DEFAULT_PASS: monitoring
@@ -47,7 +45,6 @@ services:
 
   influxdb:
     image: influxdb:2.7-alpine
-    container_name: monitoring-influxdb
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: monitoring

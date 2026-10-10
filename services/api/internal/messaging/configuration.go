@@ -9,7 +9,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-const configUpdatesQueue = "checker.config.updates"
+const configUpdatesQueue = "scheduler.config.updates"
 
 type configurationRepository interface {
 	List(context.Context) ([]serviceconfig.Service, error)
