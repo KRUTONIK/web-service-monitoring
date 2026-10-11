@@ -9,12 +9,14 @@ const (
 	defaultRabbitMQURL = "amqp://monitoring:monitoring@localhost:5672/"
 	defaultAPITarget   = "localhost:9091"
 	defaultInterval    = time.Minute
+	defaultRetryDelay  = 5 * time.Second
 )
 
 type Config struct {
 	RabbitMQURL string
 	APITarget   string
 	Interval    time.Duration
+	RetryDelay  time.Duration
 }
 
 func Load() Config {
@@ -22,6 +24,7 @@ func Load() Config {
 		RabbitMQURL: valueOrDefault("RABBITMQ_URL", defaultRabbitMQURL),
 		APITarget:   valueOrDefault("API_GRPC_ADDRESS", defaultAPITarget),
 		Interval:    durationOrDefault("SCHEDULER_INTERVAL", defaultInterval),
+		RetryDelay:  durationOrDefault("CHECKER_JOB_RETRY_DELAY", defaultRetryDelay),
 	}
 }
 

@@ -32,7 +32,7 @@ func main() {
 		log.Fatalf("request configuration snapshot: %v", err)
 	}
 
-	broker, err := messaging.Open(cfg.RabbitMQURL, cfg.Interval)
+	broker, err := messaging.Open(cfg.RabbitMQURL, cfg.Interval, cfg.RetryDelay)
 	if err != nil {
 		log.Fatalf("open RabbitMQ connection: %v", err)
 	}
