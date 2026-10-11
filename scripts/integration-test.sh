@@ -18,22 +18,22 @@ service_id() {
 
 trap cleanup EXIT
 
-echo "Starting infrastructure..."
+echo "Запуск инфраструктуры..."
 "${COMPOSE[@]}" up -d
 
-echo "Waiting for containers..."
+echo "Ожидание запуска контейнеров..."
 services=(postgres rabbitmq influxdb)
 for service in "${services[@]}"; do
-    echo "Waiting for $service..."
+    echo "Ожидание сервиса $service..."
     for i in {1..30}; do
         container_id=$(service_id "$service")
         status=$(docker inspect --format='{{.State.Health.Status}}' "$container_id" 2>/dev/null || true)
         if [ "$status" = "healthy" ]; then
-            echo "$service is healthy"
+            echo "Сервис $service работоспособен"
             break
         fi
         if [ "$i" -eq 30 ]; then
-            echo "$service failed to become healthy"
+            echo "Сервис $service не перешёл в работоспособное состояние"
             "${COMPOSE[@]}" logs "$service"
             exit 1
         fi
@@ -41,13 +41,13 @@ for service in "${services[@]}"; do
     done
 done
 
-echo "Testing PostgreSQL..."
+echo "Проверка PostgreSQL..."
 "${COMPOSE[@]}" exec -T postgres psql -U monitoring -d monitoring -c "SELECT 1;"
 
-echo "Testing RabbitMQ..."
+echo "Проверка RabbitMQ..."
 "${COMPOSE[@]}" exec -T rabbitmq rabbitmq-diagnostics -q ping
 
-echo "Testing InfluxDB..."
+echo "Проверка InfluxDB..."
 curl --fail --silent http://localhost:8086/health > /dev/null
 
-echo "All infrastructure integration tests passed."
+echo "Все интеграционные тесты инфраструктуры успешно пройдены."

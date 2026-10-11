@@ -18,10 +18,10 @@ service_id() {
 
 trap cleanup EXIT
 
-echo "Starting prototype..."
+echo "Запуск прототипа..."
 "${COMPOSE[@]}" up --build -d
 
-echo "Waiting for API Service..."
+echo "Ожидание API Service..."
 for i in {1..60}; do
     api_id=$(service_id api)
     status=$(docker inspect \
@@ -33,7 +33,7 @@ for i in {1..60}; do
     fi
 
     if [ "$i" -eq 60 ]; then
-        echo "API Service failed to become healthy"
+        echo "API Service не перешёл в работоспособное состояние"
         "${COMPOSE[@]}" logs api
         exit 1
     fi
@@ -41,7 +41,7 @@ for i in {1..60}; do
     sleep 2
 done
 
-echo "Waiting for Checker Service..."
+echo "Ожидание Checker Service..."
 for i in {1..60}; do
     checker_id=$(service_id checker)
     status=$(docker inspect \
@@ -53,7 +53,7 @@ for i in {1..60}; do
     fi
 
     if [ "$i" -eq 60 ]; then
-        echo "Checker Service did not start"
+        echo "Checker Service не запустился"
         "${COMPOSE[@]}" logs checker
         exit 1
     fi
@@ -61,25 +61,25 @@ for i in {1..60}; do
     sleep 2
 done
 
-echo "Checking Metrics Service..."
+echo "Проверка Metrics Service..."
 metrics_id=$(service_id metrics)
 status=$(docker inspect \
     --format='{{.State.Status}}' \
     "$metrics_id" 2>/dev/null || true)
 if [ "$status" != "running" ]; then
-    echo "Metrics Service is not running"
+    echo "Metrics Service не запущен"
     "${COMPOSE[@]}" logs metrics
     exit 1
 fi
 
-echo "Checking API result..."
+echo "Проверка результата через API..."
 for i in {1..60}; do
     if result=$(curl --fail --silent http://localhost:8080/api/checks/latest); then
         break
     fi
 
     if [ "$i" -eq 60 ]; then
-        echo "Monitoring result did not become available"
+        echo "Результат мониторинга не стал доступен"
         "${COMPOSE[@]}" logs api checker metrics
         exit 1
     fi
@@ -94,8 +94,8 @@ if (result.service_url !== "http://test-service" || result.available !== true ||
 }
 ' "$result"
 
-echo "Checking Web UI..."
+echo "Проверка Web UI..."
 curl --fail --silent http://localhost:5173/ |
     grep --quiet '<div id="root"></div>'
 
-echo "Prototype integration test passed."
+echo "Интеграционный тест прототипа успешно пройден."

@@ -14,7 +14,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-// PermanentError marks a failure that must not be retried.
+// PermanentError обозначает ошибку, которую не следует повторять.
 type PermanentError struct{ err error }
 
 func (err *PermanentError) Error() string { return err.err.Error() }
