@@ -10,6 +10,7 @@ const (
 	defaultAPITarget   = "localhost:9091"
 	defaultInterval    = time.Minute
 	defaultRetryDelay  = 5 * time.Second
+	defaultJobTTL      = time.Minute
 )
 
 type Config struct {
@@ -17,6 +18,7 @@ type Config struct {
 	APITarget   string
 	Interval    time.Duration
 	RetryDelay  time.Duration
+	JobTTL      time.Duration
 }
 
 func Load() Config {
@@ -25,6 +27,7 @@ func Load() Config {
 		APITarget:   valueOrDefault("API_GRPC_ADDRESS", defaultAPITarget),
 		Interval:    durationOrDefault("SCHEDULER_INTERVAL", defaultInterval),
 		RetryDelay:  durationOrDefault("CHECKER_JOB_RETRY_DELAY", defaultRetryDelay),
+		JobTTL:      durationOrDefault("CHECKER_JOB_TTL", defaultJobTTL),
 	}
 }
 

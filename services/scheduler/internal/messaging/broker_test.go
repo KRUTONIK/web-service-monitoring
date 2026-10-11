@@ -30,6 +30,13 @@ func TestCheckJobTTLCoversAllRetryAttempts(t *testing.T) {
 	}
 }
 
+func TestCheckJobTTLPreservesConfiguredValue(t *testing.T) {
+	got := checkJobTTL(time.Minute, time.Second)
+	if got != time.Minute {
+		t.Fatalf("check job TTL = %s, want %s", got, time.Minute)
+	}
+}
+
 func TestAwaitJobPublishAcceptsBrokerConfirmation(t *testing.T) {
 	confirms := make(chan amqp.Confirmation, 1)
 	returns := make(chan amqp.Return, 1)

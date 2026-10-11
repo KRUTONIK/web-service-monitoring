@@ -3,6 +3,7 @@ services:
     environment:
       SCHEDULER_INTERVAL: 10s
       CHECKER_JOB_RETRY_DELAY: 1s
+      CHECKER_JOB_TTL: 1m
 
   slow-test-service:
     build:

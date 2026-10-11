@@ -94,8 +94,8 @@ errors are temporary: they are published to the delayed retry queue with the
 attempt number and error description in headers. After three attempts, Checker
 publishes the unchanged job body to `checker.jobs.dlq`, adds final-error
 metadata and acknowledges the source delivery. The retry delay is configured by
-`CHECKER_JOB_RETRY_DELAY`; the main queue TTL is never shorter than the full
-retry window.
+`CHECKER_JOB_RETRY_DELAY`; the main queue TTL is configured separately with
+`CHECKER_JOB_TTL` and is never shorter than the full retry window.
 
 Each configuration has a monotonically increasing `version`. Scheduler Service
 first replaces its local state with the startup snapshot and then consumes
@@ -134,6 +134,7 @@ the refresh button.
 | `API_GRPC_ADDRESS` | Scheduler | `localhost:9091` |
 | `SCHEDULER_INTERVAL` | Scheduler | `1m` |
 | `CHECKER_JOB_RETRY_DELAY` | Scheduler | `5s` |
+| `CHECKER_JOB_TTL` | Scheduler | `1m` |
 | `RABBITMQ_URL` | API, Scheduler, Checker | local monitoring broker |
 | `METRICS_GRPC_LISTEN_ADDRESS` | Metrics | `:9092` |
 | `INFLUXDB_URL` | Checker, Metrics | `http://localhost:8086` |

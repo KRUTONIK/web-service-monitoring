@@ -172,10 +172,10 @@ func jobQueueArguments(jobTTL time.Duration) amqp.Table {
 	}
 }
 
-func checkJobTTL(interval, retryDelay time.Duration) time.Duration {
+func checkJobTTL(configuredTTL, retryDelay time.Duration) time.Duration {
 	retryWindow := retryDelay * time.Duration(contractsmessaging.MaxCheckJobAttempts+1)
-	if retryWindow > interval {
+	if retryWindow > configuredTTL {
 		return retryWindow
 	}
-	return interval
+	return configuredTTL
 }
