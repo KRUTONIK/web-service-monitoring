@@ -1,0 +1,15 @@
+services:
+  scheduler:
+    environment:
+      SCHEDULER_INTERVAL: 10s
+      CHECKER_JOB_RETRY_DELAY: 1s
+
+  slow-test-service:
+    build:
+      context: .
+      dockerfile: tests/http-fixture/Dockerfile
+    environment:
+      RESPONSE_DELAY: 8s
+
+  updated-test-service:
+    image: nginx:1.27-alpine

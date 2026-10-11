@@ -14,8 +14,6 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-const maxJobAttempts = 3
-
 // PermanentError marks a failure that must not be retried.
 type PermanentError struct{ err error }
 
@@ -89,10 +87,10 @@ func (broker *Broker) processDelivery(ctx context.Context, channel *amqp.Channel
 
 	if err := handler(job); err != nil {
 		var permanent *PermanentError
-		if errors.As(err, &permanent) || attempt >= maxJobAttempts {
+		if errors.As(err, &permanent) || attempt >= contractsmessaging.MaxCheckJobAttempts {
 			return broker.moveToDLQ(ctx, channel, delivery, attempt, err.Error())
 		}
-		log.Printf("retry check job service=%s attempt=%d/%d error=%v", job.ServiceID, attempt, maxJobAttempts, err)
+		log.Printf("retry check job service=%s attempt=%d/%d error=%v", job.ServiceID, attempt, contractsmessaging.MaxCheckJobAttempts, err)
 		if err := broker.moveToRetryQueue(ctx, channel, delivery, attempt, err.Error()); err != nil {
 			return err
 		}

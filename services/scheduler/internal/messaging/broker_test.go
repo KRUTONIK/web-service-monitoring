@@ -22,6 +22,14 @@ func TestJobQueueArgumentsRejectOverflow(t *testing.T) {
 	}
 }
 
+func TestCheckJobTTLCoversAllRetryAttempts(t *testing.T) {
+	got := checkJobTTL(2*time.Second, time.Second)
+	want := 4 * time.Second
+	if got != want {
+		t.Fatalf("check job TTL = %s, want %s", got, want)
+	}
+}
+
 func TestAwaitJobPublishAcceptsBrokerConfirmation(t *testing.T) {
 	confirms := make(chan amqp.Confirmation, 1)
 	returns := make(chan amqp.Return, 1)

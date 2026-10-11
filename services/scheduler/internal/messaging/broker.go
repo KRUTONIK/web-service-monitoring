@@ -143,7 +143,7 @@ func (broker *Broker) declareQueues() error {
 	if err := channel.ExchangeDeclare(contractsmessaging.CheckRetryExchange, amqp.ExchangeDirect, true, false, false, false, nil); err != nil {
 		return fmt.Errorf("declare retry exchange: %w", err)
 	}
-	arguments := jobQueueArguments(broker.jobTTL)
+	arguments := jobQueueArguments(checkJobTTL(broker.jobTTL, broker.retryDelay))
 	if _, err := channel.QueueDeclare(contractsmessaging.CheckJobsQueue, true, false, false, false, arguments); err != nil {
 		return fmt.Errorf("declare queue %s: %w", contractsmessaging.CheckJobsQueue, err)
 	}
@@ -170,4 +170,12 @@ func jobQueueArguments(jobTTL time.Duration) amqp.Table {
 		"x-overflow":    "reject-publish",
 		"x-message-ttl": int32(jobTTL.Milliseconds()),
 	}
+}
+
+func checkJobTTL(interval, retryDelay time.Duration) time.Duration {
+	retryWindow := retryDelay * time.Duration(contractsmessaging.MaxCheckJobAttempts+1)
+	if retryWindow > interval {
+		return retryWindow
+	}
+	return interval
 }
