@@ -31,6 +31,13 @@ rabbit_queue_value() {
     node -e 'console.log(JSON.parse(process.argv[1])[process.argv[2]] ?? 0)' "$response" "$field"
 }
 
+rabbit_queue_redeliveries() {
+    local queue="$1"
+    local response
+    response=$(curl --fail --silent --user monitoring:monitoring "http://localhost:15672/api/queues/%2F/${queue}")
+    node -e 'console.log(JSON.parse(process.argv[1]).message_stats?.redeliver ?? 0)' "$response"
+}
+
 influx_job_count() {
     local service_id="$1"
     local service_url="${2:-}"
@@ -115,18 +122,20 @@ wait_for_queue_value() {
     fail "Expected ${queue}.${field} to reach ${expected}"
 }
 
-wait_for_checker_log_count() {
-    local pattern="$1"
-    local expected="$2"
+wait_for_queue_redelivery() {
+    local queue="$1"
     for _ in {1..40}; do
-        local count
-        count=$("${COMPOSE[@]}" logs --no-log-prefix checker 2>&1 | grep --fixed-strings --count "$pattern" || true)
-        if [ "$count" -ge "$expected" ]; then
+        local redeliveries
+        if ! redeliveries=$(rabbit_queue_redeliveries "$queue"); then
+            sleep 1
+            continue
+        fi
+        if [ "$redeliveries" -ge 1 ]; then
             return
         fi
         sleep 1
     done
-    fail "Expected ${expected} Checker log entries matching ${pattern}"
+    fail "Expected ${queue} to redeliver an unacknowledged job"
 }
 
 trap cleanup EXIT
@@ -159,10 +168,39 @@ done
 
 echo "Checking redelivery after Checker failure..."
 "${COMPOSE[@]}" stop scheduler >/dev/null
+"${COMPOSE[@]}" stop checker >/dev/null
+for queue in checker.jobs checker.jobs.retry; do
+    curl --fail --silent --request DELETE --user monitoring:monitoring \
+        "http://localhost:15672/api/queues/%2F/${queue}/contents" >/dev/null
+done
+"${COMPOSE[@]}" up -d --no-deps --scale checker=2 checker >/dev/null
+wait_for_queue_value checker.jobs consumers 2
+redelivery_payload=$(node -e '
+process.stdout.write(JSON.stringify({
+  job_id: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  service_id: "slow-service",
+  service_url: "http://slow-test-service:8080",
+  scheduled_at: new Date().toISOString()
+}));
+')
+redelivery_request=$(node -e '
+const payload = process.argv[1];
+process.stdout.write(JSON.stringify({
+  properties: {content_type: "application/json", delivery_mode: 2},
+  routing_key: "checker.jobs",
+  payload,
+  payload_encoding: "string"
+}));
+' "$redelivery_payload")
+routed=$(curl --fail --silent --user monitoring:monitoring \
+    --header "Content-Type: application/json" \
+    --data "$redelivery_request" \
+    "http://localhost:15672/api/exchanges/%2F/amq.default/publish")
+node -e 'if (!JSON.parse(process.argv[1]).routed) process.exit(1)' "$routed" || fail "Redelivery test job was not routed"
 wait_for_queue_value checker.jobs messages_unacknowledged 1
 "${COMPOSE[@]}" kill checker >/dev/null
 "${COMPOSE[@]}" up -d --no-deps --scale checker=2 checker >/dev/null
-wait_for_checker_log_count "checked service=slow-service" 1
+wait_for_queue_redelivery checker.jobs
 
 echo "Checking DLQ after InfluxDB failure..."
 "${COMPOSE[@]}" stop checker >/dev/null
