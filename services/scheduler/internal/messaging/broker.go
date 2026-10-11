@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/KRUTONIK/web-service-monitoring/contracts/jobs"
@@ -46,6 +47,11 @@ func (broker *Broker) PublishJobs(ctx context.Context, services []serviceconfig.
 		return fmt.Errorf("open job publication channel: %w", err)
 	}
 	defer func() { _ = channel.Close() }()
+	if err := channel.Confirm(false); err != nil {
+		return fmt.Errorf("enable job publisher confirms: %w", err)
+	}
+	confirms := channel.NotifyPublish(make(chan amqp.Confirmation, 1))
+	returns := channel.NotifyReturn(make(chan amqp.Return, 1))
 
 	scheduledAt := time.Now().UTC()
 	for _, service := range services {
@@ -54,11 +60,36 @@ func (broker *Broker) PublishJobs(ctx context.Context, services []serviceconfig.
 		if err != nil {
 			return fmt.Errorf("encode check job: %w", err)
 		}
-		if err := channel.PublishWithContext(ctx, "", contractsmessaging.CheckJobsQueue, false, false, amqp.Publishing{ContentType: "application/json", DeliveryMode: amqp.Persistent, Body: body}); err != nil {
-			return fmt.Errorf("publish check job: %w", err)
+		if err := publishJob(ctx, channel, confirms, returns, body); err != nil {
+			log.Printf("check job was not published service=%s job_id=%s reason=%v", service.ID, job.JobID, err)
+			return fmt.Errorf("publish check job for service %s: %w", service.ID, err)
 		}
 	}
 	return nil
+}
+
+func publishJob(ctx context.Context, channel *amqp.Channel, confirms <-chan amqp.Confirmation, returns <-chan amqp.Return, body []byte) error {
+	if err := channel.PublishWithContext(ctx, "", contractsmessaging.CheckJobsQueue, true, false, amqp.Publishing{ContentType: "application/json", DeliveryMode: amqp.Persistent, Body: body}); err != nil {
+		return err
+	}
+	return awaitJobPublish(ctx, confirms, returns)
+}
+
+func awaitJobPublish(ctx context.Context, confirms <-chan amqp.Confirmation, returns <-chan amqp.Return) error {
+	select {
+	case returned := <-returns:
+		return fmt.Errorf("broker returned message: %s (%d)", returned.ReplyText, returned.ReplyCode)
+	case confirmation, ok := <-confirms:
+		if !ok {
+			return fmt.Errorf("publisher confirm channel closed")
+		}
+		if !confirmation.Ack {
+			return fmt.Errorf("broker rejected message")
+		}
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (broker *Broker) ConsumeUpdates(ctx context.Context, handler func(serviceconfig.Update) error) error {
@@ -112,11 +143,7 @@ func (broker *Broker) declareQueues() error {
 	if err := channel.ExchangeDeclare(contractsmessaging.CheckRetryExchange, amqp.ExchangeDirect, true, false, false, false, nil); err != nil {
 		return fmt.Errorf("declare retry exchange: %w", err)
 	}
-	arguments := amqp.Table{
-		"x-max-length":  int32(maxQueuedJobs),
-		"x-overflow":    "drop-head",
-		"x-message-ttl": int32(broker.jobTTL.Milliseconds()),
-	}
+	arguments := jobQueueArguments(broker.jobTTL)
 	if _, err := channel.QueueDeclare(contractsmessaging.CheckJobsQueue, true, false, false, false, arguments); err != nil {
 		return fmt.Errorf("declare queue %s: %w", contractsmessaging.CheckJobsQueue, err)
 	}
@@ -135,4 +162,12 @@ func (broker *Broker) declareQueues() error {
 		return fmt.Errorf("declare dead-letter queue %s: %w", contractsmessaging.CheckJobsDLQ, err)
 	}
 	return nil
+}
+
+func jobQueueArguments(jobTTL time.Duration) amqp.Table {
+	return amqp.Table{
+		"x-max-length":  int32(maxQueuedJobs),
+		"x-overflow":    "reject-publish",
+		"x-message-ttl": int32(jobTTL.Milliseconds()),
+	}
 }
