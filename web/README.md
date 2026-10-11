@@ -1,16 +1,52 @@
-# React + Vite
+# Web UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Интерфейс показывает последнюю проверку веб-сервиса: URL, доступность,
+HTTP-код, время ответа и время проверки. Данные поступают из REST API.
 
-Currently, two official plugins are available:
+Приложение разработано на React и Vite.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Локальный запуск
 
-## React Compiler
+Установите зависимости:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+npm install
+```
 
-## Expanding the ESLint configuration
+Запустите сервер разработки:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+npm run dev
+```
+
+По умолчанию Vite откроет интерфейс по адресу, указанному в выводе команды.
+
+## Сборка и проверка
+
+Проверить код ESLint:
+
+```bash
+npm run lint
+```
+
+Собрать приложение:
+
+```bash
+npm run build
+```
+
+## Адрес API
+
+По умолчанию интерфейс обращается к `http://localhost:8080`. Чтобы указать
+другой адрес, задайте переменную `VITE_API_URL` до запуска или сборки:
+
+```bash
+VITE_API_URL=http://localhost:8080 npm run dev
+```
+
+В PowerShell:
+
+```powershell
+$env:VITE_API_URL = "http://localhost:8080"
+npm run dev
+```

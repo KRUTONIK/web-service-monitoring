@@ -1,83 +1,81 @@
-# Changelog
+# История изменений
 
-## v0.3.1 — Monitoring Core Fixes
+## v0.3.1 — Повышение надёжности мониторинга
 
-### Added
+### Добавлено
 
-- delayed retry queue and DLQ for Checker job failures
-- stable `job_id` and idempotent InfluxDB result writes
-- publisher confirms and explicit overflow handling for check jobs
-- Docker integration scenarios for periodic checks, worker recovery, DLQ and
-  versioned configuration updates
+- очередь отложенных повторов и DLQ для ошибок заданий Checker;
+- стабильный `job_id` и идемпотентная запись результатов в InfluxDB;
+- подтверждения публикации и явная обработка переполнения очереди заданий;
+- Docker-сценарии для периодических проверок, восстановления воркера, DLQ и
+  версионных обновлений конфигурации.
 
-### Changed
+### Изменено
 
-- Scheduler and Checker share the retry-attempt limit and preserve a queue TTL
-  sufficient for delayed retries
-- CI runs the monitoring-core integration scenario after the existing
-  infrastructure and prototype checks
+- Scheduler и Checker используют общий лимит попыток; TTL заданий сохраняет
+  время, достаточное для повторных попыток;
+- CI запускает интеграционную проверку ядра мониторинга после инфраструктурной
+  и прототипной проверок.
 
-## v0.3.0 — Monitoring Core
+## v0.3.0 — Ядро мониторинга
 
-### Added
+### Добавлено
 
-- Scheduler Service for periodic dispatch of monitoring jobs
-- RabbitMQ job queue for scalable Checker workers
-- `service_id` in monitoring results and Metrics Service responses
-- validation of HTTP/HTTPS service URLs before checks
-- retry logic for temporary failures when writing results to InfluxDB
-- Docker verification of the complete flow with multiple Checker workers
+- Scheduler Service для периодической публикации заданий мониторинга;
+- очередь RabbitMQ для масштабируемых воркеров Checker;
+- `service_id` в результатах мониторинга и ответах Metrics Service;
+- проверка HTTP/HTTPS-адресов перед запросом;
+- повторные попытки временно неудачной записи результатов в InfluxDB;
+- Docker-проверка полного сценария с несколькими Checker.
 
-### Changed
+### Изменено
 
-- Checker Service now processes jobs from the queue instead of owning service configuration
-- Scheduler Service owns the current configuration snapshot and receives its updates from API Service
-- Docker Compose configuration supports isolated test environments and Checker scaling
+- Checker Service обрабатывает задания из очереди вместо владения
+  конфигурацией сервисов;
+- Scheduler Service хранит актуальный снимок конфигурации и получает её
+  обновления от API Service;
+- Docker Compose поддерживает изолированные тестовые окружения и
+  масштабирование Checker.
 
-## v0.2.0 — Prototype
+## v0.2.0 — Прототип мониторинга
 
-### Added
+### Добавлено
 
-- minimal end-to-end web-service monitoring scenario
-- service configuration storage in PostgreSQL
-- versioned Protocol Buffers contracts for internal gRPC APIs
-- startup configuration transfer from API Service to Checker Service over gRPC
-- asynchronous configuration updates through RabbitMQ
-- HTTP availability checks and result storage in InfluxDB
-- Metrics Service for reading monitoring results from InfluxDB
-- latest monitoring result REST API
-- minimal Web UI for displaying service status
-- Docker Compose configuration and integration test for the complete prototype
+- минимальный сквозной сценарий мониторинга веб-сервиса;
+- хранение конфигурации сервиса в PostgreSQL;
+- версионированные Protobuf-контракты для внутренних gRPC API;
+- передача начальной конфигурации от API Service к Checker Service по gRPC;
+- асинхронные обновления конфигурации через RabbitMQ;
+- HTTP-проверки доступности и хранение результатов в InfluxDB;
+- Metrics Service для чтения результатов из InfluxDB;
+- REST API последней проверки;
+- минимальный Web UI для отображения статуса;
+- Docker Compose и интеграционный тест полного прототипа.
 
-### Changed
+### Изменено
 
-- separated metric reading from Checker Service into Metrics Service
-- aligned service communication with the target project architecture
+- чтение метрик вынесено из Checker Service в Metrics Service;
+- взаимодействие сервисов приведено к целевой архитектуре проекта.
 
-## v0.1.1 — Infrastructure Integration Tests
+## v0.1.1 — Тестирование инфраструктуры
 
-### Added
+### Добавлено
 
-- Docker Compose infrastructure for PostgreSQL, RabbitMQ and InfluxDB
-- infrastructure health checks
-- automated infrastructure integration tests
-- integration tests as a required CI stage
+- Docker Compose-инфраструктура PostgreSQL, RabbitMQ и InfluxDB;
+- проверки готовности инфраструктурных сервисов;
+- автоматический интеграционный тест инфраструктуры;
+- запуск интеграционных тестов в CI.
 
-## v0.1.0 — Infrastructure
+## v0.1.0 — Инфраструктура
 
-Initial infrastructure release.
+### Добавлено
 
-### Added
-
-- base microservice repository structure
-- API, Checker and Notification Go service skeletons
-- React Web UI skeleton
-- Git Flow branching strategy
-- Conventional Commits validation
-- Go formatting and static analysis
-- React ESLint checks
-- automated unit tests and coverage reports
-- automatic application build
-- CI build and coverage artifacts
-- automated quality metrics
-- protected main and develop branches
+- базовая структура микросервисного репозитория;
+- заготовки API, Checker и Notification Service на Go;
+- заготовка Web UI на React;
+- стратегия Git Flow;
+- проверка Conventional Commits;
+- форматирование и статический анализ Go;
+- проверка ESLint для React;
+- автоматические unit-тесты, сборка и метрики качества;
+- защищённые ветки `main` и `develop`.

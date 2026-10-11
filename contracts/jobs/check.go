@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// CheckJob is a durable RabbitMQ message consumed by Checker workers.
+// CheckJob — долговечное сообщение RabbitMQ, обрабатываемое экземплярами Checker Service.
 type CheckJob struct {
 	JobID       string    `json:"job_id"`
 	ServiceID   string    `json:"service_id"`
@@ -24,7 +24,7 @@ func NewCheckJob(serviceID string, serviceURL string, scheduledAt time.Time) Che
 	}
 }
 
-// ID is stable for one service scheduled at one exact instant.
+// ID стабильно для одного сервиса, запланированного на один точный момент времени.
 func ID(serviceID string, serviceURL string, scheduledAt time.Time) string {
 	value := fmt.Sprintf("%s\x00%s\x00%d", serviceID, serviceURL, scheduledAt.UTC().UnixNano())
 	sum := sha256.Sum256([]byte(value))

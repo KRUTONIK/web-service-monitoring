@@ -1,101 +1,104 @@
-# Web Service Monitoring
+# Мониторинг веб-сервисов
 
-Microservice-based system for monitoring web-service availability and performance.
+Микросервисная система для проверки доступности и времени ответа веб-сервисов.
+Текущая опубликованная версия — `v0.3.1`.
 
-## Current status
+## Возможности
 
-The project is at the monitoring-core stage (`v0.3.1` in development). It
-periodically checks configured web services, stores idempotent results in
-InfluxDB and exposes the latest result through the API and Web UI. Failed jobs
-are retried with a delay and then retained in a RabbitMQ dead-letter queue.
+Система периодически проверяет заданный веб-сервис, сохраняет результат в
+InfluxDB и показывает последнюю проверку в Web UI. Задания доставляются через
+RabbitMQ: временные ошибки повторяются с задержкой, а некорректные задания и
+задания с исчерпанными попытками сохраняются в DLQ. Повторная доставка не
+создаёт дубликат результата благодаря стабильному `job_id`.
 
-## Quick start
+Сейчас используется только начальная конфигурация одного сервиса. Полноценное
+управление сервисами, пользователи, личные кабинеты, история, аналитика и
+уведомления будут добавлены на следующих этапах.
 
-Requirements:
+## Архитектура
 
-- Docker with Docker Compose
+- **Web UI** отображает последнюю проверку и обращается к API по REST.
+- **API Service** хранит начальную конфигурацию в PostgreSQL, предоставляет
+  REST API и получает метрики от Metrics Service по gRPC.
+- **Scheduler Service** получает снимок конфигурации по gRPC, принимает её
+  обновления через RabbitMQ и создаёт задания проверок.
+- **Checker Service** получает задания из RabbitMQ, выполняет HTTP-проверки и
+  записывает результаты в InfluxDB.
+- **Metrics Service** читает результаты из InfluxDB и отдаёт их API по gRPC.
+- **Notification Service** пока содержит только заготовку для будущей обработки
+  событий сбоев и восстановления.
 
-Start the complete prototype from the repository root:
+PostgreSQL хранит конфигурацию, InfluxDB — результаты проверок, RabbitMQ
+передаёт асинхронные события и задания. API Service не обращается к InfluxDB
+напрямую.
+
+## Технологии
+
+Go, React, Vite, PostgreSQL, InfluxDB, RabbitMQ, gRPC, Docker Compose и GitHub
+Actions.
+
+## Запуск через Docker Compose
+
+Нужны Docker и Docker Compose. В корне репозитория выполните:
 
 ```bash
 docker compose up --build
 ```
 
-Open:
+Основные адреса:
 
-- Web UI: http://localhost:5173
-- API health check: http://localhost:8080/health
-- latest check result: http://localhost:8080/api/checks/latest
+- Web UI: <http://localhost:5173>
+- REST API: <http://localhost:8080/api/checks/latest>
+- проверка готовности API: <http://localhost:8080/health>
+- RabbitMQ Management: <http://localhost:15672> (`monitoring` / `monitoring`)
+- InfluxDB: <http://localhost:8086>
 
-Scheduler Service creates checks automatically. Checker Service remains running
-as a worker and receives jobs through RabbitMQ. A successful job is
-acknowledged only after its result is saved.
-
-Additional Checker workers can be started when needed:
-
-```bash
-docker compose up --scale checker=2
-```
-
-Stop the prototype while preserving stored data:
+Остановить сервисы, сохранив данные:
 
 ```bash
 docker compose down
 ```
 
-See [Prototype documentation](docs/prototype.md) for configuration, verification
-and current limitations.
+Удалить также тестовые данные:
 
-## Architecture
+```bash
+docker compose down -v
+```
 
-The system consists of:
+### Несколько Checker
 
-- Web UI — React
-- API Service — Go
-- Scheduler Service — Go
-- Checker Service — Go
-- Metrics Service — Go
-- Notification Service — Go
-- PostgreSQL — configuration and incidents
-- InfluxDB — monitoring results
-- RabbitMQ — asynchronous events between microservices
-- gRPC — synchronous internal requests
+Checker работают как конкурирующие потребители одной очереди. Чтобы запустить
+два экземпляра, используйте:
 
-API Service owns configuration in PostgreSQL. Scheduler Service requests its
-startup configuration from API over gRPC, receives later configuration updates
-through RabbitMQ and sends check jobs to Checker workers. Checker Service writes
-monitoring results to InfluxDB, while Metrics Service provides read access to
-them. API reads metrics from Metrics Service over gRPC.
+```bash
+docker compose up --scale checker=2
+```
 
-Check jobs are processed with at-least-once delivery. A stable `job_id` makes
-InfluxDB writes idempotent. Temporary failures travel through a delayed retry
-queue; malformed jobs and jobs that exhaust retries are moved to the DLQ. The
-Scheduler uses publisher confirms, so an overflow or routing failure is logged
-instead of silently losing a job.
-API Service has no direct access to InfluxDB. Docker initialization creates a
-single InfluxDB token for the prototype. Separate read and write credentials
-are deferred until the production-hardening stage.
+## Проверки и тесты
 
-## Project structure
+GitHub Actions выполняет проверку сообщений коммитов, форматирование и тесты
+Go, ESLint и сборку Web UI, сборку приложения, а также инфраструктурные и
+интеграционные проверки. Их результаты и артефакты доступны на вкладке
+**Actions** репозитория.
 
-- `services/api` — API Service
-- `services/scheduler` — Scheduler Service
-- `services/checker` — Checker Service
-- `services/metrics` — Metrics Service
-- `services/notification` — Notification Service
-- `contracts` — versioned Protocol Buffers contracts and generated Go code
-- `web` — React Web UI
-- `deploy` — deployment configuration
-- `docs` — project documentation
-- `scripts` — utility scripts
-- `metrics` — quality metrics
+Локальные сценарии:
 
-## Versions
+```bash
+bash scripts/integration-test.sh
+bash scripts/prototype-test.sh
+bash scripts/monitoring-core-test.sh
+```
 
-- `v0.1.0` — infrastructure
-- `v0.2.0` — prototype
-- `v0.3.0` — monitoring core
-- `v0.3.1` — monitoring core reliability fixes
-- `v0.4.0` — management and state tracking
-- `v0.5.0` — analytics and notifications
-- `v1.0.0` — final release
+Тесты Go и проверка Web UI также запускаются командами `go test` в нужном
+модуле и `npm run lint` / `npm run build` в каталоге `web`.
+
+Подробности о конфигурации, очередях и ограничениях приведены в
+[техническом описании](docs/prototype.md).
+
+## Ограничения и планы
+
+Версия `v0.3.1` проверяет только начальную конфигурацию одного сервиса и
+возвращает последнюю проверку. Нет интерфейса управления сервисами,
+аутентификации, истории результатов, аналитики и работающих уведомлений.
+Также для прототипа используется общий токен InfluxDB вместо отдельных прав
+чтения и записи. Эти возможности запланированы для последующих этапов.
