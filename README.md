@@ -4,10 +4,10 @@ Microservice-based system for monitoring web-service availability and performanc
 
 ## Current status
 
-The project is at the prototype stage (`v0.2.0` in development). The implemented
-vertical scenario checks one configured web service, stores the result in
-InfluxDB, exposes the latest result through the API and displays it in the Web
-UI.
+The project is at the monitoring-core stage (`v0.3.1` in development). It
+periodically checks configured web services, stores idempotent results in
+InfluxDB and exposes the latest result through the API and Web UI. Failed jobs
+are retried with a delay and then retained in a RabbitMQ dead-letter queue.
 
 ## Quick start
 
@@ -28,7 +28,8 @@ Open:
 - latest check result: http://localhost:8080/api/checks/latest
 
 Scheduler Service creates checks automatically. Checker Service remains running
-as a worker and receives jobs through RabbitMQ.
+as a worker and receives jobs through RabbitMQ. A successful job is
+acknowledged only after its result is saved.
 
 Additional Checker workers can be started when needed:
 
@@ -65,6 +66,12 @@ startup configuration from API over gRPC, receives later configuration updates
 through RabbitMQ and sends check jobs to Checker workers. Checker Service writes
 monitoring results to InfluxDB, while Metrics Service provides read access to
 them. API reads metrics from Metrics Service over gRPC.
+
+Check jobs are processed with at-least-once delivery. A stable `job_id` makes
+InfluxDB writes idempotent. Temporary failures travel through a delayed retry
+queue; malformed jobs and jobs that exhaust retries are moved to the DLQ. The
+Scheduler uses publisher confirms, so an overflow or routing failure is logged
+instead of silently losing a job.
 API Service has no direct access to InfluxDB. Docker initialization creates a
 single InfluxDB token for the prototype. Separate read and write credentials
 are deferred until the production-hardening stage.
@@ -88,6 +95,7 @@ are deferred until the production-hardening stage.
 - `v0.1.0` — infrastructure
 - `v0.2.0` — prototype
 - `v0.3.0` — monitoring core
+- `v0.3.1` — monitoring core reliability fixes
 - `v0.4.0` — management and state tracking
 - `v0.5.0` — analytics and notifications
 - `v1.0.0` — final release

@@ -1,9 +1,9 @@
-# Monitoring Prototype
+# Monitoring Core
 
 ## Purpose
 
-The prototype validates the minimum end-to-end monitoring scenario and the
-selected technology stack before implementation of the monitoring core.
+The monitoring core validates the end-to-end scenario and the selected
+technology stack for periodic checks of configured web services.
 
 The scenario is:
 
@@ -53,9 +53,49 @@ Scheduler Service receives a configuration snapshot first and then consumes
 durable configuration-update messages. It ignores stale versions and schedules
 enabled services at `SCHEDULER_INTERVAL`. Jobs are sent to a durable shared
 queue; several Checker instances can consume it as competing consumers.
-Checker acknowledges a job only after the result has been stored. Failed
-processing is requeued, while the queue is bounded by length and job lifetime
-to prevent stale tasks from accumulating.
+Checker acknowledges a job only after the result has been stored. The job queue
+is bounded by length and lifetime to prevent stale tasks from accumulating.
+
+## Reliable job delivery
+
+RabbitMQ provides at-least-once delivery, therefore a Checker can receive the
+same job more than once. Scheduler creates a stable `job_id` from the service,
+URL and scheduled check time. Checker keeps that identifier and writes it as an
+InfluxDB tag with the scheduled timestamp. A repeated delivery overwrites the
+same InfluxDB point instead of creating another measurement.
+
+```text
+Scheduler --publisher confirm--> checker.jobs --> Checker
+                                        |          |
+                              reject-publish       +-- success: write InfluxDB, ACK
+                              when full            |
+                                                   +-- temporary failure
+                                                        |
+                                                        v
+                                             checker.retry exchange
+                                                        |
+                                                        v
+                                         checker.jobs.retry (delay)
+                                                        |
+                                                        v
+                                                   checker.jobs
+
+malformed job or exhausted attempts -----------------> checker.jobs.dlq
+```
+
+`checker.jobs` is durable, keeps at most 1000 tasks and uses
+`reject-publish`, so queue overflow is returned to Scheduler rather than
+silently dropping an older task. Scheduler waits for a RabbitMQ publisher
+confirm and logs an unrecoverable publication failure with the service and job
+identifiers.
+
+Checker classifies malformed jobs as permanent failures. Other processing
+errors are temporary: they are published to the delayed retry queue with the
+attempt number and error description in headers. After three attempts, Checker
+publishes the unchanged job body to `checker.jobs.dlq`, adds final-error
+metadata and acknowledges the source delivery. The retry delay is configured by
+`CHECKER_JOB_RETRY_DELAY`; the main queue TTL is never shorter than the full
+retry window.
 
 Each configuration has a monotonically increasing `version`. Scheduler Service
 first replaces its local state with the startup snapshot and then consumes
@@ -93,6 +133,7 @@ the refresh button.
 | `PROTOTYPE_SERVICE_URL` | API | `http://test-service` in Compose |
 | `API_GRPC_ADDRESS` | Scheduler | `localhost:9091` |
 | `SCHEDULER_INTERVAL` | Scheduler | `1m` |
+| `CHECKER_JOB_RETRY_DELAY` | Scheduler | `5s` |
 | `RABBITMQ_URL` | API, Scheduler, Checker | local monitoring broker |
 | `METRICS_GRPC_LISTEN_ADDRESS` | Metrics | `:9092` |
 | `INFLUXDB_URL` | Checker, Metrics | `http://localhost:8086` |
@@ -148,7 +189,7 @@ Unit tests cover the HTTP checker, versioned configuration state, gRPC service
 adapters, environment configuration, InfluxDB write and query clients, CSV
 response parsing and API handlers.
 
-The full prototype integration test runs through Docker Compose:
+The basic prototype integration test runs through Docker Compose:
 
 ```bash
 bash scripts/prototype-test.sh
@@ -156,8 +197,18 @@ bash scripts/prototype-test.sh
 
 The test builds the images, waits for API, Checker and Metrics Service, polls
 until a monitoring result is available, validates the returned JSON and checks
-that the Web UI is available. CI runs this scenario after the infrastructure
-integration test.
+that the Web UI is available.
+
+The monitoring-core integration test additionally verifies periodic scheduling,
+two competing Checker workers, redelivery after a worker failure, retry and
+DLQ processing while InfluxDB is unavailable, and versioned configuration
+updates:
+
+```bash
+bash scripts/monitoring-core-test.sh
+```
+
+CI runs both integration scenarios after the infrastructure checks.
 
 ## Prototype limitations
 
