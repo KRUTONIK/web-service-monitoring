@@ -79,7 +79,7 @@ func (broker *Broker) ConsumeJobs(ctx context.Context, handler func(jobs.CheckJo
 func (broker *Broker) processDelivery(ctx context.Context, channel *amqp.Channel, delivery amqp.Delivery, handler func(jobs.CheckJob) error) error {
 	attempt := deliveryAttempt(delivery.Headers)
 	var job jobs.CheckJob
-	if err := json.Unmarshal(delivery.Body, &job); err != nil || job.ServiceID == "" || job.ServiceURL == "" {
+	if err := json.Unmarshal(delivery.Body, &job); err != nil || job.JobID == "" || job.ServiceID == "" || job.ServiceURL == "" || job.ScheduledAt.IsZero() {
 		reason := "invalid check job"
 		if err != nil {
 			reason = fmt.Sprintf("decode check job: %v", err)

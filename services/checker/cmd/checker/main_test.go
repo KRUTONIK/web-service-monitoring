@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/KRUTONIK/web-service-monitoring/contracts/jobs"
 	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/check"
@@ -26,11 +27,12 @@ func TestRunJobWritesCheckResult(t *testing.T) {
 	defer server.Close()
 
 	writer := &stubWriter{}
-	job := jobs.CheckJob{ServiceID: "service-1", ServiceURL: server.URL}
+	scheduledAt := time.Date(2026, time.October, 11, 12, 0, 0, 0, time.UTC)
+	job := jobs.NewCheckJob("service-1", server.URL, scheduledAt)
 	if err := runJob(context.Background(), check.New(server.Client()), writer, job); err != nil {
 		t.Fatalf("run check job: %v", err)
 	}
-	if writer.result.ServiceID != "service-1" || !writer.result.Available || writer.result.StatusCode != http.StatusOK {
+	if writer.result.JobID != job.JobID || !writer.result.CheckedAt.Equal(scheduledAt) || writer.result.ServiceID != "service-1" || !writer.result.Available || writer.result.StatusCode != http.StatusOK {
 		t.Fatalf("unexpected result: %+v", writer.result)
 	}
 }
