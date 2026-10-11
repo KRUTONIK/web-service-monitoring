@@ -24,11 +24,11 @@ func TestWriteCheckResult(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result := check.Result{ServiceID: "service-1", ServiceURL: "https://service.test/path?a=b,c", CheckedAt: time.Unix(123, 456).UTC(), Available: false, StatusCode: 503, ResponseTimeMS: 27, Error: `request failed: "temporary"`}
+	result := check.Result{JobID: "job-1", ServiceID: "service-1", ServiceURL: "https://service.test/path?a=b,c", CheckedAt: time.Unix(123, 456).UTC(), Available: false, StatusCode: 503, ResponseTimeMS: 27, Error: `request failed: "temporary"`}
 	if err := NewInfluxDB(server.Client(), server.URL, "org", "bucket", "token").Write(context.Background(), result); err != nil {
 		t.Fatalf("write result: %v", err)
 	}
-	expected := `service_check,service_id=service-1,service_url=https://service.test/path?a\=b\,c available=false,status_code=503i,response_time_ms=27i,error="request failed: \"temporary\"" 123000000456`
+	expected := `service_check,job_id=job-1,service_id=service-1,service_url=https://service.test/path?a\=b\,c available=false,status_code=503i,response_time_ms=27i,error="request failed: \"temporary\"" 123000000456`
 	if receivedBody != expected {
 		t.Fatalf("unexpected line protocol:\nwant: %s\ngot:  %s", expected, receivedBody)
 	}
@@ -101,15 +101,26 @@ func TestRepeatedWriteUsesSameInfluxDBPoint(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result := check.Result{ServiceID: "service-1", ServiceURL: "https://service.test", CheckedAt: time.Unix(123, 456).UTC(), Available: true, StatusCode: http.StatusOK, ResponseTimeMS: 12}
+	result := check.Result{JobID: "job-1", ServiceID: "service-1", ServiceURL: "https://service.test", CheckedAt: time.Unix(123, 456).UTC(), Available: true, StatusCode: http.StatusOK, ResponseTimeMS: 12}
+	repeatedResult := result
+	repeatedResult.Available = false
+	repeatedResult.StatusCode = http.StatusServiceUnavailable
 	storage := NewInfluxDB(server.Client(), server.URL, "org", "bucket", "token")
 	if err := storage.Write(context.Background(), result); err != nil {
 		t.Fatalf("write first result: %v", err)
 	}
-	if err := storage.Write(context.Background(), result); err != nil {
+	if err := storage.Write(context.Background(), repeatedResult); err != nil {
 		t.Fatalf("write repeated result: %v", err)
 	}
-	if len(bodies) != 2 || bodies[0] != bodies[1] {
+	if len(bodies) != 2 || pointIdentity(bodies[0]) != pointIdentity(bodies[1]) {
 		t.Fatalf("expected repeated delivery to use the same point, got %v", bodies)
 	}
+}
+
+func pointIdentity(line string) string {
+	parts := strings.Split(line, " ")
+	if len(parts) != 3 {
+		return ""
+	}
+	return parts[0] + " " + parts[2]
 }

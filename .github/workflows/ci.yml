@@ -199,6 +199,10 @@ jobs:
         shell: bash
         run: bash scripts/prototype-test.sh
 
+      - name: Run monitoring-core integration tests
+        shell: bash
+        run: bash scripts/monitoring-core-test.sh
+
   build:
     name: Build application
     runs-on: ubuntu-latest
