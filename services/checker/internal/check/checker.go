@@ -15,6 +15,7 @@ var (
 )
 
 type Result struct {
+	JobID          string    `json:"job_id"`
 	ServiceID      string    `json:"service_id"`
 	ServiceURL     string    `json:"service_url"`
 	CheckedAt      time.Time `json:"checked_at"`

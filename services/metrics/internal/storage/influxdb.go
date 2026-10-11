@@ -73,7 +73,7 @@ func (influx *InfluxDB) latestQuery(serviceID string) string {
   |> range(start: -24h)
   |> filter(fn: (r) => r._measurement == "service_check")
 %s
-  |> pivot(rowKey: ["_time", "service_id", "service_url"], columnKey: ["_field"], valueColumn: "_value")
+  |> pivot(rowKey: ["_time", "job_id", "service_id", "service_url"], columnKey: ["_field"], valueColumn: "_value")
   |> sort(columns: ["_time"], desc: true)
   |> limit(n: 1)`, escapeFluxString(influx.bucket), serviceFilter)
 }

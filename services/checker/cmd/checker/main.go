@@ -42,6 +42,8 @@ type resultWriter interface {
 
 func runJob(ctx context.Context, checker *check.Checker, checkStorage resultWriter, job jobs.CheckJob) error {
 	result := checker.Run(ctx, job.ServiceID, job.ServiceURL)
+	result.JobID = job.JobID
+	result.CheckedAt = job.ScheduledAt
 	if err := checkStorage.Write(ctx, result); err != nil {
 		return fmt.Errorf("store result: %w", err)
 	}

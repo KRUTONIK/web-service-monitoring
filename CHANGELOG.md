@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.3.1 — Monitoring Core Fixes
+
+### Added
+
+- delayed retry queue and DLQ for Checker job failures
+- stable `job_id` and idempotent InfluxDB result writes
+- publisher confirms and explicit overflow handling for check jobs
+- Docker integration scenarios for periodic checks, worker recovery, DLQ and
+  versioned configuration updates
+
+### Changed
+
+- Scheduler and Checker share the retry-attempt limit and preserve a queue TTL
+  sufficient for delayed retries
+- CI runs the monitoring-core integration scenario after the existing
+  infrastructure and prototype checks
+
 ## v0.3.0 — Monitoring Core
 
 ### Added
