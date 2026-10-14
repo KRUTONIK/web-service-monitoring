@@ -75,7 +75,7 @@ jobs:
 
       - name: Check formatting
         run: |
-          UNFORMATTED=$(gofmt -l contracts/gen services)
+          UNFORMATTED=$(gofmt -l contracts services)
 
           if [ -n "$UNFORMATTED" ]; then
             echo "The following Go files are not formatted:"
@@ -85,6 +85,7 @@ jobs:
 
       - name: Run go vet
         run: |
+          go vet ./contracts/...
           go vet ./services/api/...
           go vet ./services/checker/...
           go vet ./services/metrics/...
@@ -96,6 +97,8 @@ jobs:
           mkdir -p test-reports/go
           set +e
 
+          go test -json -coverprofile=contracts/coverage.out ./contracts/... > test-reports/go/contracts.json
+          CONTRACTS_EXIT=$?
           go test -json -coverprofile=services/api/coverage.out ./services/api/... > test-reports/go/api.json
           API_EXIT=$?
           go test -json -coverprofile=services/checker/coverage.out ./services/checker/... > test-reports/go/checker.json
@@ -109,13 +112,18 @@ jobs:
 
           set -e
 
-          if [ "$API_EXIT" -ne 0 ] || [ "$CHECKER_EXIT" -ne 0 ] || [ "$METRICS_EXIT" -ne 0 ] || [ "$NOTIFICATION_EXIT" -ne 0 ] || [ "$SCHEDULER_EXIT" -ne 0 ]; then
+          if [ "$CONTRACTS_EXIT" -ne 0 ] || [ "$API_EXIT" -ne 0 ] || [ "$CHECKER_EXIT" -ne 0 ] || [ "$METRICS_EXIT" -ne 0 ] || [ "$NOTIFICATION_EXIT" -ne 0 ] || [ "$SCHEDULER_EXIT" -ne 0 ]; then
             exit 1
           fi
 
       - name: Show coverage
         if: always()
         run: |
+          if [ -f contracts/coverage.out ]; then
+            echo "contracts:"
+            go tool cover -func=contracts/coverage.out
+          fi
+
           for service in api checker notification metrics scheduler; do
             profile="services/${service}/coverage.out"
             if [ -f "$profile" ]; then
@@ -137,7 +145,7 @@ jobs:
             echo "|---|---:|"
             echo "| Пройдено тестов | ${PASSED} |"
             echo "| Не пройдено тестов | ${FAILED} |"
-            echo "| Машиночитаемые результаты | `go-test-reports` |"
+            echo '| Машиночитаемые результаты | `go-test-reports` |'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage reports
@@ -146,6 +154,7 @@ jobs:
         with:
           name: go-coverage
           path: |
+            contracts/coverage.out
             services/api/coverage.out
             services/checker/coverage.out
             services/metrics/coverage.out
@@ -159,6 +168,7 @@ jobs:
           name: go-test-reports
           path: |
             test-reports/go/
+            contracts/coverage.out
             services/api/coverage.out
             services/checker/coverage.out
             services/metrics/coverage.out
@@ -226,15 +236,21 @@ jobs:
           node <<'NODE' >> "$GITHUB_STEP_SUMMARY"
           const fs = require('fs');
           const reportPath = 'test-results/junit.xml';
-          const report = fs.existsSync(reportPath) ? fs.readFileSync(reportPath, 'utf8') : '';
+          if (!fs.existsSync(reportPath)) {
+            console.error(`JUnit-отчёт ${reportPath} не создан`);
+            process.exit(1);
+          }
+          const report = fs.readFileSync(reportPath, 'utf8');
           const total = (report.match(/<testcase\b/g) || []).length;
           const failed = (report.match(/<(failure|error)\b/g) || []).length;
+          const skipped = (report.match(/<skipped\b/g) || []).length;
           console.log('## Пользовательские тесты Playwright');
           console.log('');
           console.log('| Показатель | Значение |');
           console.log('|---|---:|');
-          console.log(`| Пройдено сценариев | ${Math.max(total - failed, 0)} |`);
+          console.log(`| Пройдено сценариев | ${Math.max(total - failed - skipped, 0)} |`);
           console.log(`| Не пройдено сценариев | ${failed} |`);
+          console.log(`| Пропущено сценариев | ${skipped} |`);
           console.log('| Отчёты | `playwright-report` и `test-results` |');
           NODE
 
@@ -255,6 +271,7 @@ jobs:
     strategy:
       matrix:
         service:
+          - contracts
           - services/api
           - services/checker
           - services/metrics
@@ -400,6 +417,7 @@ jobs:
 
           go test -json \
             -coverprofile=metrics/generated/coverage.out \
+            ./contracts/... \
             ./services/api/... \
             ./services/checker/... \
             ./services/metrics/... \
@@ -431,7 +449,7 @@ jobs:
             -func=metrics/generated/coverage.out |
             awk '/^total:/ {gsub("%", "", $3); print $3}')
 
-          MAX_COMPLEXITY=$(gocyclo services |
+          MAX_COMPLEXITY=$(gocyclo contracts/jobs services |
             awk '
               NR == 1 { max = $1 }
               $1 > max { max = $1 }
