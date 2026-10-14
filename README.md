@@ -90,10 +90,13 @@ bash scripts/monitoring-core-test.sh
 ```
 
 Тесты Go и проверка Web UI также запускаются командами `go test` в нужном
-модуле и `npm run lint` / `npm run build` в каталоге `web`.
+модуле и `npm run lint` / `npm run build` в каталоге `web`. Пользовательские
+сценарии запускаются командой `npm run test:e2e` после `npx playwright install
+chromium`.
 
 Подробности о конфигурации, очередях и ограничениях приведены в
-[техническом описании](docs/prototype.md).
+[техническом описании](docs/prototype.md). Матрица покрытия, отчёты и порядок
+запуска тестов описаны в [документации по тестированию](docs/testing.md).
 
 ## Ограничения и планы
 

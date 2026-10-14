@@ -75,7 +75,7 @@ jobs:
 
       - name: Check formatting
         run: |
-          UNFORMATTED=$(gofmt -l contracts/gen services)
+          UNFORMATTED=$(gofmt -l contracts services)
 
           if [ -n "$UNFORMATTED" ]; then
             echo "The following Go files are not formatted:"
@@ -85,6 +85,7 @@ jobs:
 
       - name: Run go vet
         run: |
+          go vet ./contracts/...
           go vet ./services/api/...
           go vet ./services/checker/...
           go vet ./services/metrics/...
@@ -93,34 +94,81 @@ jobs:
 
       - name: Run Go tests with coverage
         run: |
-          go test -coverprofile=services/api/coverage.out ./services/api/...
-          go test -coverprofile=services/checker/coverage.out ./services/checker/...
-          go test -coverprofile=services/metrics/coverage.out ./services/metrics/...
-          go test -coverprofile=services/notification/coverage.out ./services/notification/...
-          go test -coverprofile=services/scheduler/coverage.out ./services/scheduler/...
+          mkdir -p test-reports/go
+          set +e
+
+          go test -json -coverpkg=./contracts/jobs -coverprofile=contracts/coverage.out ./contracts/... > test-reports/go/contracts.json
+          CONTRACTS_EXIT=$?
+          go test -json -coverprofile=services/api/coverage.out ./services/api/... > test-reports/go/api.json
+          API_EXIT=$?
+          go test -json -coverprofile=services/checker/coverage.out ./services/checker/... > test-reports/go/checker.json
+          CHECKER_EXIT=$?
+          go test -json -coverprofile=services/metrics/coverage.out ./services/metrics/... > test-reports/go/metrics.json
+          METRICS_EXIT=$?
+          go test -json -coverprofile=services/notification/coverage.out ./services/notification/... > test-reports/go/notification.json
+          NOTIFICATION_EXIT=$?
+          go test -json -coverprofile=services/scheduler/coverage.out ./services/scheduler/... > test-reports/go/scheduler.json
+          SCHEDULER_EXIT=$?
+
+          set -e
+
+          if [ "$CONTRACTS_EXIT" -ne 0 ] || [ "$API_EXIT" -ne 0 ] || [ "$CHECKER_EXIT" -ne 0 ] || [ "$METRICS_EXIT" -ne 0 ] || [ "$NOTIFICATION_EXIT" -ne 0 ] || [ "$SCHEDULER_EXIT" -ne 0 ]; then
+            exit 1
+          fi
 
       - name: Show coverage
+        if: always()
         run: |
-          echo "API Service:"
-          go tool cover -func=services/api/coverage.out
+          if [ -f contracts/coverage.out ]; then
+            echo "contracts:"
+            go tool cover -func=contracts/coverage.out
+          fi
 
-          echo "Checker Service:"
-          go tool cover -func=services/checker/coverage.out
+          for service in api checker notification metrics scheduler; do
+            profile="services/${service}/coverage.out"
+            if [ -f "$profile" ]; then
+              echo "${service}:"
+              go tool cover -func="$profile"
+            fi
+          done
 
-          echo "Notification Service:"
-          go tool cover -func=services/notification/coverage.out
+      - name: Summarize Go tests
+        if: always()
+        run: |
+          PASSED=$(jq -s '[.[] | select(.Test != null and .Action == "pass")] | length' test-reports/go/*.json)
+          FAILED=$(jq -s '[.[] | select(.Test != null and .Action == "fail")] | length' test-reports/go/*.json)
 
-          echo "Metrics Service:"
-          go tool cover -func=services/metrics/coverage.out
-
-          echo "Scheduler Service:"
-          go tool cover -func=services/scheduler/coverage.out
+          {
+            echo "## Тестирование Go"
+            echo ""
+            echo "| Показатель | Значение |"
+            echo "|---|---:|"
+            echo "| Пройдено тестов | ${PASSED} |"
+            echo "| Не пройдено тестов | ${FAILED} |"
+            echo '| Машиночитаемые результаты | `go-test-reports` |'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage reports
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: go-coverage
           path: |
+            contracts/coverage.out
+            services/api/coverage.out
+            services/checker/coverage.out
+            services/metrics/coverage.out
+            services/notification/coverage.out
+            services/scheduler/coverage.out
+
+      - name: Upload Go test reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: go-test-reports
+          path: |
+            test-reports/go/
+            contracts/coverage.out
             services/api/coverage.out
             services/checker/coverage.out
             services/metrics/coverage.out
@@ -154,6 +202,68 @@ jobs:
         working-directory: web
         run: npm run build
 
+  playwright:
+    name: Playwright UI tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Install Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        working-directory: web
+        run: npm run test:e2e
+
+      - name: Summarize Playwright tests
+        if: always()
+        working-directory: web
+        run: |
+          node <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require('fs');
+          const reportPath = 'test-results/junit.xml';
+          if (!fs.existsSync(reportPath)) {
+            console.error(`JUnit-отчёт ${reportPath} не создан`);
+            process.exit(1);
+          }
+          const report = fs.readFileSync(reportPath, 'utf8');
+          const total = (report.match(/<testcase\b/g) || []).length;
+          const failed = (report.match(/<(failure|error)\b/g) || []).length;
+          const skipped = (report.match(/<skipped\b/g) || []).length;
+          console.log('## Пользовательские тесты Playwright');
+          console.log('');
+          console.log('| Показатель | Значение |');
+          console.log('|---|---:|');
+          console.log(`| Пройдено сценариев | ${Math.max(total - failed - skipped, 0)} |`);
+          console.log(`| Не пройдено сценариев | ${failed} |`);
+          console.log(`| Пропущено сценариев | ${skipped} |`);
+          console.log('| Отчёты | `playwright-report` и `test-results` |');
+          NODE
+
+      - name: Upload Playwright reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+          if-no-files-found: warn
+
   go-lint:
     name: Go lint (${{ matrix.service }})
     runs-on: ubuntu-latest
@@ -161,6 +271,7 @@ jobs:
     strategy:
       matrix:
         service:
+          - contracts
           - services/api
           - services/checker
           - services/metrics
@@ -212,6 +323,7 @@ jobs:
       - go-quality
       - go-lint
       - web-quality
+      - playwright
       - integration-tests
 
     steps:
@@ -304,7 +416,9 @@ jobs:
           set +e
 
           go test -json \
+            -coverpkg=./contracts/jobs,./services/... \
             -coverprofile=metrics/generated/coverage.out \
+            ./contracts/... \
             ./services/api/... \
             ./services/checker/... \
             ./services/metrics/... \
@@ -336,7 +450,7 @@ jobs:
             -func=metrics/generated/coverage.out |
             awk '/^total:/ {gsub("%", "", $3); print $3}')
 
-          MAX_COMPLEXITY=$(gocyclo services |
+          MAX_COMPLEXITY=$(gocyclo contracts/jobs services |
             awk '
               NR == 1 { max = $1 }
               $1 > max { max = $1 }
