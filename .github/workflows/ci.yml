@@ -97,7 +97,7 @@ jobs:
           mkdir -p test-reports/go
           set +e
 
-          go test -json -coverprofile=contracts/coverage.out ./contracts/... > test-reports/go/contracts.json
+          go test -json -coverpkg=./contracts/jobs -coverprofile=contracts/coverage.out ./contracts/... > test-reports/go/contracts.json
           CONTRACTS_EXIT=$?
           go test -json -coverprofile=services/api/coverage.out ./services/api/... > test-reports/go/api.json
           API_EXIT=$?
@@ -416,6 +416,7 @@ jobs:
           set +e
 
           go test -json \
+            -coverpkg=./contracts/jobs,./services/... \
             -coverprofile=metrics/generated/coverage.out \
             ./contracts/... \
             ./services/api/... \
