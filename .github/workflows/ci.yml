@@ -107,7 +107,13 @@ jobs:
 
       - name: Generate JUnit reports
         if: always()
-        run: python3 scripts/go-test-report.py test-results
+        shell: bash
+        run: |
+          if compgen -G 'test-results/*.json' > /dev/null; then
+            python3 scripts/go-test-report.py test-results
+          else
+            echo "Go tests did not start; no test report was generated." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload Go test results
         if: always()
