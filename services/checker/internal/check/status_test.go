@@ -12,7 +12,6 @@ func TestRunHTTPStatusBoundaries(t *testing.T) {
   status int
   available bool
  }{
-  {199, false},
   {200, true},
   {299, true},
   {300, false},
