@@ -92,15 +92,36 @@ jobs:
           go vet ./services/scheduler/...
 
       - name: Run Go tests with coverage
+        shell: bash
         run: |
-          go test -coverprofile=services/api/coverage.out ./services/api/...
-          go test -coverprofile=services/checker/coverage.out ./services/checker/...
-          go test -coverprofile=services/metrics/coverage.out ./services/metrics/...
-          go test -coverprofile=services/notification/coverage.out ./services/notification/...
-          go test -coverprofile=services/scheduler/coverage.out ./services/scheduler/...
+          mkdir -p test-results
+          failed=0
+          for module in contracts services/api services/checker services/metrics services/notification services/scheduler; do
+            name="${module//\//-}"
+            echo "Testing $module"
+            if ! go test -json -coverprofile="$module/coverage.out" "./$module/..." > "test-results/$name.json"; then
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+      - name: Generate JUnit reports
+        if: always()
+        run: python3 scripts/go-test-report.py test-results
+
+      - name: Upload Go test results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: go-test-results
+          path: test-results/
 
       - name: Show coverage
+        if: success()
         run: |
+          echo "Contracts:"
+          go tool cover -func=contracts/coverage.out
+
           echo "API Service:"
           go tool cover -func=services/api/coverage.out
 
@@ -117,10 +138,12 @@ jobs:
           go tool cover -func=services/scheduler/coverage.out
 
       - name: Upload coverage reports
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: go-coverage
           path: |
+            contracts/coverage.out
             services/api/coverage.out
             services/checker/coverage.out
             services/metrics/coverage.out
