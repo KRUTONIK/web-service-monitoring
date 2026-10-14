@@ -1,4 +1,15 @@
-import { expect, test } from '@playwright/test'
+import { expect, test as base } from '@playwright/test'
+
+const test = base.extend({
+  page: async ({ page }, run) => {
+    const pageErrors = []
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+
+    await run(page)
+
+    expect(pageErrors).toEqual([])
+  },
+})
 
 const checkedAt = '2026-09-25T12:30:00Z'
 
@@ -98,13 +109,10 @@ test('сообщает об отсутствии результатов мони
   await expect(page.getByText('Результатов проверки пока нет')).toBeVisible()
 })
 
-test('корректно показывает ошибку API без ошибок JavaScript', async ({ page }) => {
-  const pageErrors = []
-  page.on('pageerror', (error) => pageErrors.push(error.message))
+test('корректно показывает ошибку API', async ({ page }) => {
   await mockLatestCheck(page, { error: 'monitoring unavailable' }, 502)
 
   await page.goto('/')
 
   await expect(page.getByText('Не удалось получить данные мониторинга')).toBeVisible()
-  expect(pageErrors).toEqual([])
 })
