@@ -36,16 +36,19 @@ async function mockUnauthenticated(page) {
   await page.route('**/api/auth/me', (route) => route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'Требуется аутентификация' }) }))
 }
 
-async function mockDashboard(page, { services = [service], latest = checkResult(), latestStatus = 200 } = {}) {
-	let created = false
-	const createdService = { ...service, id: 'service-2', name: 'Тестовый сервис', url: 'https://new.example' }
+async function mockDashboard(page, { services = [service], latest = checkResult(), latestStatus = 200, latestHandler } = {}) {
+  let created = false
+  const createdService = { ...service, id: 'service-2', name: 'Тестовый сервис', url: 'https://new.example' }
   await page.route('**/api/auth/me', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(user) }))
   await page.route('**/api/services', (route) => {
-		if (route.request().method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(created ? [...services, createdService] : services) })
-		created = true
-		return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(createdService) })
+    if (route.request().method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(created ? [...services, createdService] : services) })
+    created = true
+    return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(createdService) })
   })
-  await page.route('**/api/checks/latest?service_id=service-1', (route) => route.fulfill({ status: latestStatus, contentType: 'application/json', body: JSON.stringify(latest) }))
+  await page.route('**/api/checks/latest?service_id=service-1', (route) => {
+    if (latestHandler) return latestHandler(route)
+    return route.fulfill({ status: latestStatus, contentType: 'application/json', body: JSON.stringify(latest) })
+  })
 }
 
 test('показывает форму входа неавторизованному пользователю', async ({ page }) => {
@@ -98,4 +101,84 @@ test('завершает сессию', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Выйти' }).click()
   await expect(page.getByRole('heading', { name: 'Войти' })).toBeVisible()
+})
+
+test('показывает загрузку последней проверки и затем результат', async ({ page }) => {
+  let releaseLatest
+  const latestResponse = new Promise((resolve) => { releaseLatest = resolve })
+  await mockDashboard(page, {
+    latestHandler: async (route) => {
+      await latestResponse
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify(checkResult()) })
+    },
+  })
+
+  const navigation = page.goto('/', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('status', { name: 'Загрузка последней проверки' })).toBeVisible()
+  releaseLatest()
+  await navigation
+  await expect(page.getByText('Доступен')).toBeVisible()
+})
+
+test('показывает недоступность сервиса и детали ошибки', async ({ page }) => {
+  await mockDashboard(page, {
+    latest: checkResult({ available: false, status_code: 503, response_time_ms: 215, error: 'Сервис временно недоступен' }),
+  })
+  await page.goto('/')
+  await expect(page.getByText('Недоступен', { exact: true })).toBeVisible()
+  await expect(page.getByText('503')).toBeVisible()
+  await expect(page.getByText('215 мс')).toBeVisible()
+  await expect(page.getByText('Сервис временно недоступен')).toBeVisible()
+})
+
+test('обновляет последнюю проверку вручную без перезагрузки страницы', async ({ page }) => {
+  let requests = 0
+  await mockDashboard(page, {
+    latestHandler: (route) => {
+      requests += 1
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(checkResult({ response_time_ms: requests === 1 ? 42 : 87 })) })
+    },
+  })
+  await page.goto('/')
+  await expect(page.getByText('42 мс')).toBeVisible()
+  await page.getByRole('button', { name: 'Обновить' }).click()
+  await expect(page.getByText('87 мс')).toBeVisible()
+  expect(requests).toBe(2)
+})
+
+test('показывает ошибку Metrics API', async ({ page }) => {
+  await mockDashboard(page, { latestStatus: 502, latest: { error: 'Не удалось получить данные метрик' } })
+  await page.goto('/')
+  await expect(page.getByText('Не удалось получить данные метрик')).toBeVisible()
+})
+
+test('изменяет сервис', async ({ page }) => {
+  const services = [{ ...service }]
+  const updated = { ...service, name: 'Изменённый сайт', url: 'https://updated.example', version: 2 }
+  await mockDashboard(page, { services })
+  await page.route('**/api/services/service-1', (route) => {
+    services[0] = updated
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify(updated) })
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Изменить' }).click()
+  await page.getByLabel('Название').fill(updated.name)
+  await page.getByLabel('URL').fill(updated.url)
+  await page.getByRole('button', { name: 'Сохранить' }).click()
+  await expect(page.getByRole('heading', { name: updated.name })).toBeVisible()
+  await expect(page.getByText(updated.url)).toBeVisible()
+})
+
+test('удаляет сервис из списка', async ({ page }) => {
+  const services = [{ ...service }]
+  await mockDashboard(page, { services })
+  await page.route('**/api/services/service-1', (route) => {
+    services.splice(0, 1)
+    return route.fulfill({ status: 204 })
+  })
+  await page.goto('/')
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: 'Удалить' }).click()
+  await expect(page.getByText('Сервисов пока нет. Добавьте первый сервис для мониторинга.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: service.name })).not.toBeVisible()
 })

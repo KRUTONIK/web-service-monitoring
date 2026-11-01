@@ -108,7 +108,7 @@ export function ServiceDashboard() {
 }
 
 function LatestCheck({ query }) {
-  if (query.isPending) return <Loader size="sm" />
+  if (query.isPending) return <div role="status" aria-label="Загрузка последней проверки"><Loader size="sm" /></div>
   if (query.isError) {
     const text = query.error.status === 404 ? 'Результатов проверки пока нет.' : query.error.message
     return <Alert color="yellow">{text}</Alert>
@@ -117,7 +117,7 @@ function LatestCheck({ query }) {
   return (
     <Card withBorder>
       <Stack gap="sm">
-        <Group justify="space-between"><Title order={3}>Последняя проверка</Title><Badge color={statusColor(check.available)}>{check.available ? 'Доступен' : 'Недоступен'}</Badge></Group>
+        <Group justify="space-between"><Title order={3}>Последняя проверка</Title><Group gap="sm"><Badge color={statusColor(check.available)}>{check.available ? 'Доступен' : 'Недоступен'}</Badge><Button variant="default" size="xs" loading={query.isFetching} onClick={() => query.refetch()}>Обновить</Button></Group></Group>
         <SimpleGrid cols={{ base: 1, sm: 3 }}>
           <Metric label="HTTP-код" value={check.status_code || '—'} />
           <Metric label="Время ответа" value={`${check.response_time_ms} мс`} />

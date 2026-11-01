@@ -10,13 +10,13 @@ export default defineConfig({
     ['junit', { outputFile: 'test-results/junit.xml' }],
   ],
   use: {
-    baseURL: 'http://127.0.0.1:5173',
+    baseURL: 'http://127.0.0.1:4173',
     trace: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: 'npx vite --host=127.0.0.1',
-    url: 'http://127.0.0.1:5173',
+    command: 'npx vite --host=127.0.0.1 --port=4173',
+    url: 'http://127.0.0.1:4173',
     reuseExistingServer: !process.env.CI,
   },
 })
