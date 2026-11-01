@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"mime"
 	"net/http"
 	"net/url"
@@ -161,9 +162,7 @@ func (handler *handler) createService(writer http.ResponseWriter, request *http.
 		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось создать сервис"})
 		return
 	}
-	if !handler.publishConfiguration(writer, request, "service.updated", service) {
-		return
-	}
+	handler.publishConfiguration(request, "create", service)
 
 	writeJSON(writer, http.StatusCreated, service)
 }
@@ -186,9 +185,7 @@ func (handler *handler) updateService(writer http.ResponseWriter, request *http.
 		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось изменить сервис"})
 		return
 	}
-	if !handler.publishConfiguration(writer, request, "service.updated", service) {
-		return
-	}
+	handler.publishConfiguration(request, "update", service)
 
 	writeJSON(writer, http.StatusOK, service)
 }
@@ -210,9 +207,7 @@ func (handler *handler) deleteService(writer http.ResponseWriter, request *http.
 		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось удалить сервис"})
 		return
 	}
-	if !handler.publishConfiguration(writer, request, "service.updated", service) {
-		return
-	}
+	handler.publishConfiguration(request, "delete", service)
 
 	writer.WriteHeader(http.StatusNoContent)
 }
@@ -304,13 +299,10 @@ func isHTTPURL(value string) bool {
 	return err == nil && parsed.Host != "" && (parsed.Scheme == "http" || parsed.Scheme == "https")
 }
 
-func (handler *handler) publishConfiguration(writer http.ResponseWriter, request *http.Request, event string, service serviceconfig.Service) bool {
-	if err := handler.publisher.Publish(request.Context(), serviceconfig.Update{Event: event, Service: service}); err != nil {
-		writeJSON(writer, http.StatusBadGateway, map[string]string{"error": "Не удалось обновить конфигурацию планировщика"})
-		return false
+func (handler *handler) publishConfiguration(request *http.Request, operation string, service serviceconfig.Service) {
+	if err := handler.publisher.Publish(request.Context(), serviceconfig.Update{Event: "service.updated", Service: service}); err != nil {
+		log.Printf("publish configuration operation=%s service_id=%s: %v", operation, service.ID, err)
 	}
-
-	return true
 }
 
 func (handler *handler) currentUser(writer http.ResponseWriter, request *http.Request) (user.User, bool) {

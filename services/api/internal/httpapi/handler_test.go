@@ -263,6 +263,54 @@ func TestDeleteServiceDisablesConfiguration(t *testing.T) {
 	}
 }
 
+func TestSuccessfulServiceOperationsIgnorePublicationFailure(t *testing.T) {
+	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+	for name, expectedStatus := range map[string]int{"create": http.StatusCreated, "update": http.StatusOK, "delete": http.StatusNoContent} {
+		t.Run(name, func(t *testing.T) {
+			handler, sessions, services, publisher := newTestHandler(&stubCheckReader{}, authentication)
+			publisher.err = errors.New("RabbitMQ unavailable")
+			service := serviceconfig.Service{ID: "service-1", Name: "Основной сайт", URL: "https://example.test", Enabled: name != "delete", Version: 2}
+			services.created, services.updated, services.deleted = service, service, service
+			method, path, body := http.MethodPost, "/api/services", `{"name":"Основной сайт","url":"https://example.test","enabled":true}`
+			if name == "update" {
+				method, path = http.MethodPut, "/api/services/service-1"
+			}
+			if name == "delete" {
+				method, path, body = http.MethodDelete, "/api/services/service-1", ""
+			}
+			request := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+			request.Header.Set("Origin", testOrigin)
+			if name != "delete" {
+				request.Header.Set("Content-Type", "application/json")
+			}
+			request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != expectedStatus {
+				t.Fatalf("unexpected status: %d: %s", response.Code, response.Body.String())
+			}
+			if publisher.update.Service.ID != "service-1" {
+				t.Fatalf("configuration was not published: %+v", publisher.update)
+			}
+		})
+	}
+}
+
+func TestServiceSaveFailureDoesNotPublishConfiguration(t *testing.T) {
+	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+	handler, sessions, services, publisher := newTestHandler(&stubCheckReader{}, authentication)
+	services.err = errors.New("database unavailable")
+	request := httptest.NewRequest(http.MethodPost, "/api/services", bytes.NewBufferString(`{"name":"Основной сайт","url":"https://example.test","enabled":true}`))
+	request.Header.Set("Origin", testOrigin)
+	request.Header.Set("Content-Type", "application/json")
+	request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusInternalServerError || publisher.update.Event != "" {
+		t.Fatalf("unexpected response=%d update=%+v", response.Code, publisher.update)
+	}
+}
+
 func TestDeleteServiceRejectsForeignOwnerAndRepeatedDeletion(t *testing.T) {
 	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
 	for name, repositoryError := range map[string]error{
