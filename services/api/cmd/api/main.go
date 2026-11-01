@@ -8,6 +8,7 @@ import (
 
 	configurationv1 "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/configuration/v1"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/config"
+	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/database"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/grpcapi"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/httpapi"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/messaging"
@@ -18,15 +19,16 @@ import (
 func main() {
 	cfg := config.Load()
 	ctx := context.Background()
-	configRepository, err := serviceconfig.Open(ctx, cfg.PostgresDSN)
+	postgres, err := database.Open(ctx, cfg.PostgresDSN)
 	if err != nil {
-		log.Fatalf("initialize configuration repository: %v", err)
+		log.Fatalf("initialize PostgreSQL: %v", err)
 	}
 	defer func() {
-		if err := configRepository.Close(); err != nil {
-			log.Printf("close configuration repository: %v", err)
+		if err := database.Close(postgres); err != nil {
+			log.Printf("close PostgreSQL: %v", err)
 		}
 	}()
+	configRepository := serviceconfig.New(postgres)
 	if err := configRepository.Initialize(ctx, cfg.ServiceURL); err != nil {
 		log.Fatalf("initialize prototype configuration: %v", err)
 	}

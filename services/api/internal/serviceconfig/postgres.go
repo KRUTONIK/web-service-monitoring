@@ -2,55 +2,35 @@ package serviceconfig
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"gorm.io/gorm"
 )
 
 const prototypeServiceID = "prototype-service"
 
 type Repository struct {
-	database *sql.DB
+	database *gorm.DB
 }
 
-func Open(ctx context.Context, dsn string) (*Repository, error) {
-	database, err := sql.Open("pgx", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("open PostgreSQL: %w", err)
-	}
-	if err := database.PingContext(ctx); err != nil {
-		_ = database.Close()
-		return nil, fmt.Errorf("connect to PostgreSQL: %w", err)
-	}
-
-	return &Repository{database: database}, nil
+func New(database *gorm.DB) *Repository {
+	return &Repository{database: database}
 }
 
-func (repository *Repository) Close() error {
-	return repository.database.Close()
+type record struct {
+	ID        string
+	URL       string
+	Enabled   bool
+	Version   int64
+	UpdatedAt time.Time
 }
+
+func (record) TableName() string { return "monitored_services" }
 
 func (repository *Repository) Initialize(ctx context.Context, serviceURL string) error {
-	_, err := repository.database.ExecContext(ctx, `
-        CREATE TABLE IF NOT EXISTS monitored_services (
-            id TEXT PRIMARY KEY,
-            url TEXT NOT NULL,
-            enabled BOOLEAN NOT NULL,
-            version BIGINT NOT NULL,
-            updated_at TIMESTAMPTZ NOT NULL
-        )
-    `)
-	if err != nil {
-		return fmt.Errorf("create monitored services table: %w", err)
-	}
-
-	_, err = repository.database.ExecContext(ctx, `
-        INSERT INTO monitored_services (id, url, enabled, version, updated_at)
-        VALUES ($1, $2, TRUE, 1, NOW())
-        ON CONFLICT (id) DO NOTHING
-    `, prototypeServiceID, serviceURL)
-	if err != nil {
+	prototype := record{ID: prototypeServiceID, URL: serviceURL, Enabled: true, Version: 1, UpdatedAt: time.Now().UTC()}
+	if err := repository.database.WithContext(ctx).Where("id = ?", prototypeServiceID).FirstOrCreate(&prototype).Error; err != nil {
 		return fmt.Errorf("seed prototype service: %w", err)
 	}
 
@@ -58,33 +38,14 @@ func (repository *Repository) Initialize(ctx context.Context, serviceURL string)
 }
 
 func (repository *Repository) List(ctx context.Context) ([]Service, error) {
-	rows, err := repository.database.QueryContext(ctx, `
-        SELECT id, url, enabled, version, updated_at
-        FROM monitored_services
-        ORDER BY id
-    `)
-	if err != nil {
+	var records []record
+	if err := repository.database.WithContext(ctx).Order("id").Find(&records).Error; err != nil {
 		return nil, fmt.Errorf("query monitored services: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
 
-	services := make([]Service, 0)
-	for rows.Next() {
-		var service Service
-		if err := rows.Scan(
-			&service.ID,
-			&service.URL,
-			&service.Enabled,
-			&service.Version,
-			&service.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan monitored service: %w", err)
-		}
-		services = append(services, service)
+	services := make([]Service, 0, len(records))
+	for _, record := range records {
+		services = append(services, Service{ID: record.ID, URL: record.URL, Enabled: record.Enabled, Version: record.Version, UpdatedAt: record.UpdatedAt})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate monitored services: %w", err)
-	}
-
 	return services, nil
 }
