@@ -62,6 +62,19 @@ func (repository *Repository) ListByOwner(ctx context.Context, ownerID string) (
 	return toServices(records), nil
 }
 
+func (repository *Repository) ByIDAndOwner(ctx context.Context, ownerID, id string) (Service, error) {
+	var record record
+	database := repository.database.WithContext(ctx).Where("id = ? AND owner_id = ?", id, ownerID).First(&record)
+	if errors.Is(database.Error, gorm.ErrRecordNotFound) {
+		return Service{}, ErrNotFound
+	}
+	if database.Error != nil {
+		return Service{}, fmt.Errorf("find monitored service: %w", database.Error)
+	}
+
+	return toService(record), nil
+}
+
 func (repository *Repository) Create(ctx context.Context, ownerID, name, url string, enabled bool) (Service, error) {
 	now := time.Now().UTC()
 	record := record{OwnerID: &ownerID, Name: name, URL: url, Enabled: enabled, Version: 1, CreatedAt: now, UpdatedAt: now}

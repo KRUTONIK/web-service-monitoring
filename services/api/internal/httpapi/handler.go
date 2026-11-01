@@ -6,9 +6,12 @@ import (
 	"errors"
 	"mime"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/auth"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/monitoring"
+	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/serviceconfig"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/user"
 	"github.com/alexedwards/scs/v2"
 )
@@ -23,21 +26,39 @@ type authentication interface {
 	Current(context.Context, string) (user.User, error)
 }
 
-type handler struct {
-	checks   checkReader
-	auth     authentication
-	sessions *scs.SessionManager
-	origin   string
+type serviceRepository interface {
+	ListByOwner(context.Context, string) ([]serviceconfig.Service, error)
+	ByIDAndOwner(context.Context, string, string) (serviceconfig.Service, error)
+	Create(context.Context, string, string, string, bool) (serviceconfig.Service, error)
+	Update(context.Context, string, string, string, string, bool) (serviceconfig.Service, error)
+	Delete(context.Context, string, string) (serviceconfig.Service, error)
 }
 
-func New(checks checkReader, authService authentication, sessions *scs.SessionManager, origin string) http.Handler {
-	handler := &handler{checks: checks, auth: authService, sessions: sessions, origin: origin}
+type configurationPublisher interface {
+	Publish(context.Context, serviceconfig.Update) error
+}
+
+type handler struct {
+	checks    checkReader
+	auth      authentication
+	sessions  *scs.SessionManager
+	services  serviceRepository
+	publisher configurationPublisher
+	origin    string
+}
+
+func New(checks checkReader, authService authentication, sessions *scs.SessionManager, services serviceRepository, publisher configurationPublisher, origin string) http.Handler {
+	handler := &handler{checks: checks, auth: authService, sessions: sessions, services: services, publisher: publisher, origin: origin}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", handler.health)
 	mux.HandleFunc("POST /api/auth/register", handler.register)
 	mux.HandleFunc("POST /api/auth/login", handler.login)
 	mux.HandleFunc("POST /api/auth/logout", handler.logout)
 	mux.HandleFunc("GET /api/auth/me", handler.me)
+	mux.HandleFunc("GET /api/services", handler.listServices)
+	mux.HandleFunc("POST /api/services", handler.createService)
+	mux.HandleFunc("PUT /api/services/{id}", handler.updateService)
+	mux.HandleFunc("DELETE /api/services/{id}", handler.deleteService)
 	mux.HandleFunc("GET /api/checks/latest", handler.latestCheck)
 	return handler.allowCORS(mux)
 }
@@ -49,6 +70,12 @@ type credentials struct {
 type currentUser struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
+}
+
+type serviceInput struct {
+	Name    string `json:"name"`
+	URL     string `json:"url"`
+	Enabled bool   `json:"enabled"`
 }
 
 func (handler *handler) register(writer http.ResponseWriter, request *http.Request) {
@@ -106,11 +133,108 @@ func (handler *handler) me(writer http.ResponseWriter, request *http.Request) {
 	writeJSON(writer, http.StatusOK, currentUser{ID: found.ID, Email: found.Email})
 }
 
-func (handler *handler) latestCheck(writer http.ResponseWriter, request *http.Request) {
-	if _, ok := handler.currentUser(writer, request); !ok {
+func (handler *handler) listServices(writer http.ResponseWriter, request *http.Request) {
+	currentUser, ok := handler.currentUser(writer, request)
+	if !ok {
 		return
 	}
-	result, err := handler.checks.Latest(request.Context(), request.URL.Query().Get("service_id"))
+	services, err := handler.services.ListByOwner(request.Context(), currentUser.ID)
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось получить сервисы"})
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, services)
+}
+
+func (handler *handler) createService(writer http.ResponseWriter, request *http.Request) {
+	currentUser, ok := handler.currentUser(writer, request)
+	if !ok {
+		return
+	}
+	input, ok := handler.decodeServiceInput(writer, request)
+	if !ok {
+		return
+	}
+	service, err := handler.services.Create(request.Context(), currentUser.ID, input.Name, input.URL, input.Enabled)
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось создать сервис"})
+		return
+	}
+	if !handler.publishConfiguration(writer, request, "service.updated", service) {
+		return
+	}
+
+	writeJSON(writer, http.StatusCreated, service)
+}
+
+func (handler *handler) updateService(writer http.ResponseWriter, request *http.Request) {
+	currentUser, ok := handler.currentUser(writer, request)
+	if !ok {
+		return
+	}
+	input, ok := handler.decodeServiceInput(writer, request)
+	if !ok {
+		return
+	}
+	service, err := handler.services.Update(request.Context(), currentUser.ID, request.PathValue("id"), input.Name, input.URL, input.Enabled)
+	if errors.Is(err, serviceconfig.ErrNotFound) {
+		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "Сервис не найден"})
+		return
+	}
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось изменить сервис"})
+		return
+	}
+	if !handler.publishConfiguration(writer, request, "service.updated", service) {
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, service)
+}
+
+func (handler *handler) deleteService(writer http.ResponseWriter, request *http.Request) {
+	if !handler.requireOrigin(writer, request) {
+		return
+	}
+	currentUser, ok := handler.currentUser(writer, request)
+	if !ok {
+		return
+	}
+	service, err := handler.services.Delete(request.Context(), currentUser.ID, request.PathValue("id"))
+	if errors.Is(err, serviceconfig.ErrNotFound) {
+		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "Сервис не найден"})
+		return
+	}
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось удалить сервис"})
+		return
+	}
+	if !handler.publishConfiguration(writer, request, "service.updated", service) {
+		return
+	}
+
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+func (handler *handler) latestCheck(writer http.ResponseWriter, request *http.Request) {
+	currentUser, ok := handler.currentUser(writer, request)
+	if !ok {
+		return
+	}
+	serviceID := request.URL.Query().Get("service_id")
+	if serviceID == "" {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Не указан сервис"})
+		return
+	}
+	if _, err := handler.services.ByIDAndOwner(request.Context(), currentUser.ID, serviceID); errors.Is(err, serviceconfig.ErrNotFound) {
+		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "Сервис не найден"})
+		return
+	} else if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось проверить доступ к сервису"})
+		return
+	}
+	result, err := handler.checks.Latest(request.Context(), serviceID)
 	if errors.Is(err, monitoring.ErrNotFound) {
 		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "check result not found"})
 		return
@@ -143,6 +267,50 @@ func (handler *handler) decodeCredentials(writer http.ResponseWriter, request *h
 		return credentials{}, false
 	}
 	return value, true
+}
+
+func (handler *handler) decodeServiceInput(writer http.ResponseWriter, request *http.Request) (serviceInput, bool) {
+	if !handler.requireOrigin(writer, request) {
+		return serviceInput{}, false
+	}
+	contentType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	if err != nil || contentType != "application/json" {
+		writeJSON(writer, http.StatusUnsupportedMediaType, map[string]string{"error": "Требуется JSON"})
+		return serviceInput{}, false
+	}
+	var input serviceInput
+	decoder := json.NewDecoder(http.MaxBytesReader(writer, request.Body, 4096))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Некорректный JSON"})
+		return serviceInput{}, false
+	}
+	input.Name = strings.TrimSpace(input.Name)
+	input.URL = strings.TrimSpace(input.URL)
+	if len(input.Name) == 0 || len(input.Name) > 100 {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Укажите название сервиса длиной до 100 символов"})
+		return serviceInput{}, false
+	}
+	if len(input.URL) > 2048 || !isHTTPURL(input.URL) {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Укажите корректный HTTP(S) URL"})
+		return serviceInput{}, false
+	}
+
+	return input, true
+}
+
+func isHTTPURL(value string) bool {
+	parsed, err := url.ParseRequestURI(value)
+	return err == nil && parsed.Host != "" && (parsed.Scheme == "http" || parsed.Scheme == "https")
+}
+
+func (handler *handler) publishConfiguration(writer http.ResponseWriter, request *http.Request, event string, service serviceconfig.Service) bool {
+	if err := handler.publisher.Publish(request.Context(), serviceconfig.Update{Event: event, Service: service}); err != nil {
+		writeJSON(writer, http.StatusBadGateway, map[string]string{"error": "Не удалось обновить конфигурацию планировщика"})
+		return false
+	}
+
+	return true
 }
 
 func (handler *handler) currentUser(writer http.ResponseWriter, request *http.Request) (user.User, bool) {

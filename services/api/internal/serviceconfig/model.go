@@ -4,7 +4,7 @@ import "time"
 
 type Service struct {
 	ID        string    `json:"id"`
-	OwnerID   string    `json:"owner_id,omitempty"`
+	OwnerID   string    `json:"-"`
 	Name      string    `json:"name"`
 	URL       string    `json:"url"`
 	Enabled   bool      `json:"enabled"`

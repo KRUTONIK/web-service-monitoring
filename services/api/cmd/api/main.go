@@ -77,7 +77,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:              cfg.ListenAddress,
-		Handler:           sessions.LoadAndSave(httpapi.New(metricsClient, authService, sessions, cfg.WebOrigin)),
+		Handler:           sessions.LoadAndSave(httpapi.New(metricsClient, authService, sessions, configRepository, configBroker, cfg.WebOrigin)),
 		ReadHeaderTimeout: cfg.RequestTimeout,
 	}
 

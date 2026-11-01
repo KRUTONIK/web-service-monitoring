@@ -49,16 +49,34 @@ func (broker *ConfigurationBroker) PublishCurrentConfiguration(ctx context.Conte
 	defer func() { _ = channel.Close() }()
 
 	for _, service := range services {
-		body, err := json.Marshal(serviceconfig.Update{Event: "service.updated", Service: service})
-		if err != nil {
-			return fmt.Errorf("encode configuration update: %w", err)
-		}
-		if err := channel.PublishWithContext(ctx, "", configUpdatesQueue, false, false, amqp.Publishing{
-			ContentType: "application/json", DeliveryMode: amqp.Persistent, Body: body,
-		}); err != nil {
-			return fmt.Errorf("publish configuration update: %w", err)
+		if err := publish(channel, ctx, serviceconfig.Update{Event: "service.updated", Service: service}); err != nil {
+			return err
 		}
 	}
+	return nil
+}
+
+func (broker *ConfigurationBroker) Publish(ctx context.Context, update serviceconfig.Update) error {
+	channel, err := broker.connection.Channel()
+	if err != nil {
+		return fmt.Errorf("open RabbitMQ channel: %w", err)
+	}
+	defer func() { _ = channel.Close() }()
+
+	return publish(channel, ctx, update)
+}
+
+func publish(channel *amqp.Channel, ctx context.Context, update serviceconfig.Update) error {
+	body, err := json.Marshal(update)
+	if err != nil {
+		return fmt.Errorf("encode configuration update: %w", err)
+	}
+	if err := channel.PublishWithContext(ctx, "", configUpdatesQueue, false, false, amqp.Publishing{
+		ContentType: "application/json", DeliveryMode: amqp.Persistent, Body: body,
+	}); err != nil {
+		return fmt.Errorf("publish configuration update: %w", err)
+	}
+
 	return nil
 }
 
