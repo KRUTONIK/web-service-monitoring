@@ -1,7 +1,5 @@
 :root {
-  font-family: Arial, sans-serif;
-  color: #374151;
-  background: #f3f4f6;
+  background: #f8f9fa;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -15,6 +13,3 @@ body {
   margin: 0;
 }
 
-button {
-  font: inherit;
-}

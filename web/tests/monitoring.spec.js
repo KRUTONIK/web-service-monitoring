@@ -4,20 +4,27 @@ const test = base.extend({
   page: async ({ page }, run) => {
     const pageErrors = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
-
     await run(page)
-
     expect(pageErrors).toEqual([])
   },
 })
 
-const checkedAt = '2026-09-25T12:30:00Z'
+const user = { id: 'user-1', email: 'user@example.test' }
+const service = {
+  id: 'service-1',
+  name: 'Основной сайт',
+  url: 'https://service.example',
+  enabled: true,
+  version: 1,
+  created_at: '2026-11-01T09:00:00Z',
+  updated_at: '2026-11-01T09:00:00Z',
+}
 
 function checkResult(overrides = {}) {
   return {
-    service_id: 'prototype-service',
-    service_url: 'https://service.example',
-    checked_at: checkedAt,
+    service_id: service.id,
+    service_url: service.url,
+    checked_at: '2026-11-01T10:30:00Z',
     available: true,
     status_code: 200,
     response_time_ms: 42,
@@ -25,94 +32,70 @@ function checkResult(overrides = {}) {
   }
 }
 
-async function mockLatestCheck(page, result, status = 200) {
-  await page.route('**/api/checks/latest', async (route) => {
-    await route.fulfill({
-      status,
-      contentType: 'application/json',
-      body: JSON.stringify(result),
-    })
-  })
+async function mockUnauthenticated(page) {
+  await page.route('**/api/auth/me', (route) => route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'Требуется аутентификация' }) }))
 }
 
-test('отображает состояние загрузки', async ({ page }) => {
-  let resolveRequest
-  const requestPending = new Promise((resolve) => {
-    resolveRequest = resolve
+async function mockDashboard(page, { services = [service], latest = checkResult(), latestStatus = 200 } = {}) {
+	let created = false
+	const createdService = { ...service, id: 'service-2', name: 'Тестовый сервис', url: 'https://new.example' }
+  await page.route('**/api/auth/me', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(user) }))
+  await page.route('**/api/services', (route) => {
+		if (route.request().method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(created ? [...services, createdService] : services) })
+		created = true
+		return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(createdService) })
   })
-  await page.route('**/api/checks/latest', async (route) => {
-    await requestPending
-    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(checkResult()) })
-  })
+  await page.route('**/api/checks/latest?service_id=service-1', (route) => route.fulfill({ status: latestStatus, contentType: 'application/json', body: JSON.stringify(latest) }))
+}
 
-  const navigation = page.goto('/')
-  await expect(page.getByText('Загрузка…')).toBeVisible()
-  resolveRequest()
-  await navigation
-  await expect(page.getByText('Доступен')).toBeVisible()
+test('показывает форму входа неавторизованному пользователю', async ({ page }) => {
+  await mockUnauthenticated(page)
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Войти' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Войти' })).toBeVisible()
 })
 
-test('показывает доступный сервис и его метрики', async ({ page }) => {
-  await mockLatestCheck(page, checkResult())
-
+test('регистрирует пользователя и открывает пустой список сервисов', async ({ page }) => {
+  await mockUnauthenticated(page)
+  await page.route('**/api/auth/register', (route) => route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(user) }))
+  await page.route('**/api/services', (route) => route.fulfill({ contentType: 'application/json', body: '[]' }))
   await page.goto('/')
+  await page.getByRole('button', { name: 'Зарегистрироваться' }).click()
+  await page.getByLabel('Электронная почта').fill(user.email)
+  await page.getByLabel('Пароль').fill('correct-horse-battery')
+  await page.getByRole('button', { name: 'Зарегистрироваться' }).click()
+  await expect(page.getByText('Сервисов пока нет. Добавьте первый сервис для мониторинга.')).toBeVisible()
+})
 
-  await expect(page.getByText('https://service.example')).toBeVisible()
+test('показывает сервис и последнюю проверку', async ({ page }) => {
+  await mockDashboard(page)
+  await page.goto('/')
+	await expect(page.getByRole('heading', { name: 'Основной сайт' })).toBeVisible()
   await expect(page.getByText('Доступен')).toBeVisible()
-  await expect(page.getByText('200', { exact: true })).toBeVisible()
   await expect(page.getByText('42 мс')).toBeVisible()
-  await expect(page.getByText(/25\.09\.2026/)).toBeVisible()
+  await expect(page.getByText(/01\.11\.2026/)).toBeVisible()
 })
 
-test('показывает недоступный сервис и ошибку проверки', async ({ page }) => {
-  await mockLatestCheck(page, checkResult({
-    available: false,
-    status_code: 503,
-    response_time_ms: 125,
-    error: 'Сервис временно недоступен',
-  }))
-
+test('сообщает об отсутствии результатов проверки', async ({ page }) => {
+  await mockDashboard(page, { latest: { error: 'Результатов нет' }, latestStatus: 404 })
   await page.goto('/')
-
-  await expect(page.getByText('Недоступен', { exact: true })).toBeVisible()
-  await expect(page.getByText('503', { exact: true })).toBeVisible()
-  await expect(page.getByText('125 мс')).toBeVisible()
-  await expect(page.getByText('Сервис временно недоступен')).toBeVisible()
+  await expect(page.getByText('Результатов проверки пока нет.')).toBeVisible()
 })
 
-test('обновляет результат по кнопке', async ({ page }) => {
-  let refreshed = false
-  await page.route('**/api/checks/latest', async (route) => {
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify(checkResult(refreshed
-        ? { service_url: 'https://updated.example', response_time_ms: 87 }
-        : {})),
-    })
-  })
-
+test('создаёт сервис', async ({ page }) => {
+  await mockDashboard(page, { services: [] })
   await page.goto('/')
-  await expect(page.getByText('https://service.example')).toBeVisible()
-
-  refreshed = true
-  await page.getByRole('button', { name: 'Обновить' }).click()
-
-  await expect(page.getByText('https://updated.example')).toBeVisible()
-  await expect(page.getByText('87 мс')).toBeVisible()
+  await page.getByRole('button', { name: 'Добавить сервис' }).click()
+  await page.getByLabel('Название').fill('Тестовый сервис')
+  await page.getByLabel('URL').fill('https://new.example')
+	await page.getByRole('button', { name: 'Добавить', exact: true }).click()
+	await expect(page.getByRole('heading', { name: 'Тестовый сервис' })).toBeVisible()
 })
 
-test('сообщает об отсутствии результатов мониторинга', async ({ page }) => {
-  await mockLatestCheck(page, { error: 'check result not found' }, 404)
-
+test('завершает сессию', async ({ page }) => {
+  await mockDashboard(page)
+  await page.route('**/api/auth/logout', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ status: 'ok' }) }))
   await page.goto('/')
-
-  await expect(page.getByText('Результатов проверки пока нет')).toBeVisible()
-})
-
-test('корректно показывает ошибку API', async ({ page }) => {
-  await mockLatestCheck(page, { error: 'monitoring unavailable' }, 502)
-
-  await page.goto('/')
-
-  await expect(page.getByText('Не удалось получить данные мониторинга')).toBeVisible()
+  await page.getByRole('button', { name: 'Выйти' }).click()
+  await expect(page.getByRole('heading', { name: 'Войти' })).toBeVisible()
 })
