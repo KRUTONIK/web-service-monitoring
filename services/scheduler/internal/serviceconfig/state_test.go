@@ -30,3 +30,20 @@ func TestStateDoesNotRestoreDeletedServiceFromSnapshot(t *testing.T) {
 		t.Fatalf("deleted service was restored by snapshot: %+v", services)
 	}
 }
+
+func TestStateReconcilesOnlyNewerSnapshotServices(t *testing.T) {
+	state := NewState()
+	state.Replace(Snapshot{Services: []Service{{ID: "existing", URL: "https://current.test", Enabled: true, Version: 3}}})
+	updated := state.Reconcile(Snapshot{Services: []Service{
+		{ID: "existing", URL: "https://stale.test", Enabled: true, Version: 2},
+		{ID: "new", URL: "https://new.test", Enabled: true, Version: 1},
+		{ID: "deleted", URL: "https://deleted.test", Enabled: false, Version: 4},
+	}})
+	if updated != 2 {
+		t.Fatalf("unexpected number of reconciled services: %d", updated)
+	}
+	services := state.EnabledServices()
+	if len(services) != 2 || services[0].ID != "existing" || services[0].URL != "https://current.test" || services[1].ID != "new" {
+		t.Fatalf("unexpected enabled services after reconciliation: %+v", services)
+	}
+}

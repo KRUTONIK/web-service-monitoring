@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/KRUTONIK/web-service-monitoring/services/scheduler/internal/config"
+	"github.com/KRUTONIK/web-service-monitoring/services/scheduler/internal/configsync"
 	"github.com/KRUTONIK/web-service-monitoring/services/scheduler/internal/grpcapi"
 	"github.com/KRUTONIK/web-service-monitoring/services/scheduler/internal/messaging"
 	"github.com/KRUTONIK/web-service-monitoring/services/scheduler/internal/schedule"
@@ -44,6 +45,7 @@ func main() {
 
 	state := serviceconfig.NewState()
 	state.Replace(snapshot)
+	synchronizer := configsync.New(configurationClient, state)
 	scheduler := schedule.New(state, broker)
 	if err := scheduler.Schedule(ctx); err != nil {
 		log.Printf("schedule initial checks: %v", err)
@@ -55,6 +57,23 @@ func main() {
 			return nil
 		}); err != nil {
 			log.Printf("consume configuration updates: %v", err)
+		}
+	}()
+
+	go func() {
+		ticker := time.NewTicker(cfg.ConfigSyncInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			syncContext, cancel := context.WithTimeout(ctx, 10*time.Second)
+			updated, err := synchronizer.Sync(syncContext)
+			cancel()
+			if err != nil {
+				log.Printf("synchronize configuration snapshot: %v", err)
+				continue
+			}
+			if updated > 0 {
+				log.Printf("reconciled configuration snapshot: %d updates", updated)
+			}
 		}
 	}()
 

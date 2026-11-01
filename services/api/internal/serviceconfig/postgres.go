@@ -54,6 +54,14 @@ func (repository *Repository) List(ctx context.Context) ([]Service, error) {
 	return toServices(records), nil
 }
 
+func (repository *Repository) ListForScheduler(ctx context.Context) ([]Service, error) {
+	var records []record
+	if err := repository.database.WithContext(ctx).Order("id").Find(&records).Error; err != nil {
+		return nil, fmt.Errorf("query scheduler monitored services: %w", err)
+	}
+	return toSchedulerServices(records), nil
+}
+
 func (repository *Repository) ListByOwner(ctx context.Context, ownerID string) ([]Service, error) {
 	var records []record
 	if err := repository.database.WithContext(ctx).Where("owner_id = ? AND deleted_at IS NULL", ownerID).Order("created_at DESC").Find(&records).Error; err != nil {
@@ -136,6 +144,16 @@ func toServices(records []record) []Service {
 		services = append(services, toService(record))
 	}
 
+	return services
+}
+
+func toSchedulerServices(records []record) []Service {
+	services := toServices(records)
+	for index := range services {
+		if services[index].DeletedAt != nil {
+			services[index].Enabled = false
+		}
+	}
 	return services
 }
 

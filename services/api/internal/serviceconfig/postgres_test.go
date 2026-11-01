@@ -38,3 +38,11 @@ func TestToServicePreservesSoftDeletion(t *testing.T) {
 		t.Fatalf("unexpected deleted service: %+v", service)
 	}
 }
+
+func TestToSchedulerServicesDisablesSoftDeletedService(t *testing.T) {
+	deletedAt := time.Now().UTC()
+	services := toSchedulerServices([]record{{ID: "active", Enabled: true, Version: 1}, {ID: "deleted", Enabled: true, Version: 2, DeletedAt: &deletedAt}})
+	if len(services) != 2 || !services[0].Enabled || services[1].Enabled || services[1].Version != 2 {
+		t.Fatalf("unexpected scheduler services: %+v", services)
+	}
+}

@@ -54,6 +54,22 @@ func (state *State) Apply(service Service) bool {
 	return true
 }
 
+func (state *State) Reconcile(snapshot Snapshot) int {
+	state.mutex.Lock()
+	defer state.mutex.Unlock()
+
+	updated := 0
+	for _, service := range snapshot.Services {
+		current, exists := state.services[service.ID]
+		if exists && service.Version <= current.Version {
+			continue
+		}
+		state.services[service.ID] = service
+		updated++
+	}
+	return updated
+}
+
 func (state *State) EnabledServices() []Service {
 	state.mutex.RLock()
 	defer state.mutex.RUnlock()
