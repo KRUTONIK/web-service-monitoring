@@ -4,8 +4,11 @@ go 1.27.0
 
 require (
 	github.com/KRUTONIK/web-service-monitoring/contracts v0.0.0
+	github.com/alexedwards/scs/postgresstore v0.0.0-20251002162104-209de6e426de
+	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/pressly/goose/v3 v3.20.0
 	github.com/rabbitmq/amqp091-go v1.15.0
+	golang.org/x/crypto v0.58.0
 	google.golang.org/grpc v1.75.1
 	google.golang.org/protobuf v1.36.12
 	gorm.io/driver/postgres v1.6.3

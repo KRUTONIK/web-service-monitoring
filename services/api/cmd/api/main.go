@@ -7,12 +7,15 @@ import (
 	"net/http"
 
 	configurationv1 "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/configuration/v1"
+	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/auth"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/config"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/database"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/grpcapi"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/httpapi"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/messaging"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/serviceconfig"
+	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/session"
+	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/user"
 	"google.golang.org/grpc"
 )
 
@@ -29,6 +32,11 @@ func main() {
 		}
 	}()
 	configRepository := serviceconfig.New(postgres)
+	sessions, err := session.New(postgres, cfg.CookieSecure)
+	if err != nil {
+		log.Fatalf("initialize sessions: %v", err)
+	}
+	authService := auth.New(user.NewRepository(postgres))
 	if err := configRepository.Initialize(ctx, cfg.ServiceURL); err != nil {
 		log.Fatalf("initialize prototype configuration: %v", err)
 	}
@@ -69,7 +77,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:              cfg.ListenAddress,
-		Handler:           httpapi.New(metricsClient),
+		Handler:           sessions.LoadAndSave(httpapi.New(metricsClient, authService, sessions, cfg.WebOrigin)),
 		ReadHeaderTimeout: cfg.RequestTimeout,
 	}
 
