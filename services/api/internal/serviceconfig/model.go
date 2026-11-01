@@ -4,9 +4,12 @@ import "time"
 
 type Service struct {
 	ID        string    `json:"id"`
+	OwnerID   string    `json:"owner_id,omitempty"`
+	Name      string    `json:"name"`
 	URL       string    `json:"url"`
 	Enabled   bool      `json:"enabled"`
 	Version   int64     `json:"version"`
+	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
