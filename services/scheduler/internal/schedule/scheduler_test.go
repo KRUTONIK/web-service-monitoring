@@ -41,3 +41,16 @@ func TestSchedulePublishesEnabledServices(t *testing.T) {
 		t.Fatalf("unexpected scheduled services: %+v", publisher.services)
 	}
 }
+
+func TestScheduleSkipsServiceDisabledByDeletion(t *testing.T) {
+	state := serviceconfig.NewState()
+	state.Replace(serviceconfig.Snapshot{Services: []serviceconfig.Service{{ID: "service-1", URL: "https://service.test", Enabled: true, Version: 1}}})
+	state.Apply(serviceconfig.Service{ID: "service-1", URL: "https://service.test", Enabled: false, Version: 2})
+	publisher := &stubPublisher{}
+	if err := New(state, publisher).Schedule(context.Background()); err != nil {
+		t.Fatalf("schedule checks: %v", err)
+	}
+	if len(publisher.services) != 0 {
+		t.Fatalf("deleted service was scheduled: %+v", publisher.services)
+	}
+}

@@ -26,6 +26,7 @@ type record struct {
 	Version   int64
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	DeletedAt *time.Time
 }
 
 func (record) TableName() string { return "monitored_services" }
@@ -46,7 +47,7 @@ func (repository *Repository) Initialize(ctx context.Context, serviceURL string)
 
 func (repository *Repository) List(ctx context.Context) ([]Service, error) {
 	var records []record
-	if err := repository.database.WithContext(ctx).Order("id").Find(&records).Error; err != nil {
+	if err := repository.database.WithContext(ctx).Where("deleted_at IS NULL").Order("id").Find(&records).Error; err != nil {
 		return nil, fmt.Errorf("query monitored services: %w", err)
 	}
 
@@ -55,7 +56,7 @@ func (repository *Repository) List(ctx context.Context) ([]Service, error) {
 
 func (repository *Repository) ListByOwner(ctx context.Context, ownerID string) ([]Service, error) {
 	var records []record
-	if err := repository.database.WithContext(ctx).Where("owner_id = ?", ownerID).Order("created_at DESC").Find(&records).Error; err != nil {
+	if err := repository.database.WithContext(ctx).Where("owner_id = ? AND deleted_at IS NULL", ownerID).Order("created_at DESC").Find(&records).Error; err != nil {
 		return nil, fmt.Errorf("query user monitored services: %w", err)
 	}
 
@@ -64,7 +65,7 @@ func (repository *Repository) ListByOwner(ctx context.Context, ownerID string) (
 
 func (repository *Repository) ByIDAndOwner(ctx context.Context, ownerID, id string) (Service, error) {
 	var record record
-	database := repository.database.WithContext(ctx).Where("id = ? AND owner_id = ?", id, ownerID).First(&record)
+	database := repository.database.WithContext(ctx).Where("id = ? AND owner_id = ? AND deleted_at IS NULL", id, ownerID).First(&record)
 	if errors.Is(database.Error, gorm.ErrRecordNotFound) {
 		return Service{}, ErrNotFound
 	}
@@ -87,7 +88,7 @@ func (repository *Repository) Create(ctx context.Context, ownerID, name, url str
 
 func (repository *Repository) Update(ctx context.Context, ownerID, id, name, url string, enabled bool) (Service, error) {
 	var record record
-	database := repository.database.WithContext(ctx).Where("id = ? AND owner_id = ?", id, ownerID).First(&record)
+	database := repository.database.WithContext(ctx).Where("id = ? AND owner_id = ? AND deleted_at IS NULL", id, ownerID).First(&record)
 	if errors.Is(database.Error, gorm.ErrRecordNotFound) {
 		return Service{}, ErrNotFound
 	}
@@ -109,7 +110,7 @@ func (repository *Repository) Update(ctx context.Context, ownerID, id, name, url
 
 func (repository *Repository) Delete(ctx context.Context, ownerID, id string) (Service, error) {
 	var record record
-	database := repository.database.WithContext(ctx).Where("id = ? AND owner_id = ?", id, ownerID).First(&record)
+	database := repository.database.WithContext(ctx).Where("id = ? AND owner_id = ? AND deleted_at IS NULL", id, ownerID).First(&record)
 	if errors.Is(database.Error, gorm.ErrRecordNotFound) {
 		return Service{}, ErrNotFound
 	}
@@ -117,13 +118,15 @@ func (repository *Repository) Delete(ctx context.Context, ownerID, id string) (S
 		return Service{}, fmt.Errorf("find monitored service: %w", database.Error)
 	}
 
-	if err := repository.database.WithContext(ctx).Delete(&record).Error; err != nil {
-		return Service{}, fmt.Errorf("delete monitored service: %w", err)
-	}
-
+	now := time.Now().UTC()
 	record.Enabled = false
 	record.Version++
-	record.UpdatedAt = time.Now().UTC()
+	record.UpdatedAt = now
+	record.DeletedAt = &now
+	if err := repository.database.WithContext(ctx).Save(&record).Error; err != nil {
+		return Service{}, fmt.Errorf("soft delete monitored service: %w", err)
+	}
+
 	return toService(record), nil
 }
 
@@ -142,5 +145,5 @@ func toService(record record) Service {
 		ownerID = *record.OwnerID
 	}
 
-	return Service{ID: record.ID, OwnerID: ownerID, Name: record.Name, URL: record.URL, Enabled: record.Enabled, Version: record.Version, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt}
+	return Service{ID: record.ID, OwnerID: ownerID, Name: record.Name, URL: record.URL, Enabled: record.Enabled, Version: record.Version, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, DeletedAt: record.DeletedAt}
 }

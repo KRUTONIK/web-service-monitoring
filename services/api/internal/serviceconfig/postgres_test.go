@@ -29,3 +29,12 @@ func TestToServiceSupportsPrototypeWithoutOwner(t *testing.T) {
 		t.Fatalf("unexpected prototype owner: %q", service.OwnerID)
 	}
 }
+
+func TestToServicePreservesSoftDeletion(t *testing.T) {
+	deletedAt := time.Date(2026, time.November, 1, 12, 0, 0, 0, time.UTC)
+	service := toService(record{ID: "service-1", Enabled: false, Version: 3, DeletedAt: &deletedAt})
+
+	if service.Enabled || service.DeletedAt == nil || !service.DeletedAt.Equal(deletedAt) || service.Version != 3 {
+		t.Fatalf("unexpected deleted service: %+v", service)
+	}
+}

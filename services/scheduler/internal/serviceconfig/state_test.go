@@ -16,3 +16,17 @@ func TestStateAppliesOnlyNewerConfiguration(t *testing.T) {
 		t.Fatalf("unexpected services: %+v", services)
 	}
 }
+
+func TestStateDoesNotRestoreDeletedServiceFromSnapshot(t *testing.T) {
+	state := NewState()
+	state.Replace(Snapshot{Services: []Service{{ID: "service-1", URL: "https://service.test", Enabled: true, Version: 1}}})
+	state.Apply(Service{ID: "service-1", URL: "https://service.test", Enabled: false, Version: 2})
+	if services := state.EnabledServices(); len(services) != 0 {
+		t.Fatalf("deleted service is still enabled: %+v", services)
+	}
+
+	state.Replace(Snapshot{Services: nil})
+	if services := state.EnabledServices(); len(services) != 0 {
+		t.Fatalf("deleted service was restored by snapshot: %+v", services)
+	}
+}

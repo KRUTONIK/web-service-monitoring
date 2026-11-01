@@ -262,3 +262,29 @@ func TestDeleteServiceDisablesConfiguration(t *testing.T) {
 		t.Fatalf("unexpected deletion update: %+v", publisher.update)
 	}
 }
+
+func TestDeleteServiceRejectsForeignOwnerAndRepeatedDeletion(t *testing.T) {
+	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+	for name, repositoryError := range map[string]error{
+		"чужой сервис":       serviceconfig.ErrNotFound,
+		"повторное удаление": serviceconfig.ErrNotFound,
+	} {
+		t.Run(name, func(t *testing.T) {
+			handler, sessions, services, publisher := newTestHandler(&stubCheckReader{}, authentication)
+			services.err = repositoryError
+			request := httptest.NewRequest(http.MethodDelete, "/api/services/service-2", nil)
+			request.Header.Set("Origin", testOrigin)
+			request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusNotFound {
+				t.Fatalf("unexpected status: %d", response.Code)
+			}
+			if publisher.update.Event != "" {
+				t.Fatalf("unexpected update: %+v", publisher.update)
+			}
+		})
+	}
+}
