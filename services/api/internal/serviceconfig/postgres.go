@@ -45,7 +45,7 @@ func (repository *Repository) List(ctx context.Context) ([]Service, error) {
 
 	services := make([]Service, 0, len(records))
 	for _, record := range records {
-		services = append(services, Service{ID: record.ID, URL: record.URL, Enabled: record.Enabled, Version: record.Version, UpdatedAt: record.UpdatedAt})
+		services = append(services, Service(record))
 	}
 	return services, nil
 }
