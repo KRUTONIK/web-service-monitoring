@@ -227,6 +227,8 @@ func TestServiceSettingsValidation(t *testing.T) {
 	for name, body := range map[string]string{
 		"unsupported interval":    `{"name":"Service","url":"https://service.test","enabled":true,"interval_seconds":15,"timeout_seconds":5}`,
 		"timeout equals interval": `{"name":"Service","url":"https://service.test","enabled":true,"interval_seconds":10,"timeout_seconds":10}`,
+		"explicit zero interval":  `{"name":"Service","url":"https://service.test","enabled":true,"interval_seconds":0,"timeout_seconds":5}`,
+		"explicit zero timeout":   `{"name":"Service","url":"https://service.test","enabled":true,"interval_seconds":60,"timeout_seconds":0}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "/api/services", strings.NewReader(body))
@@ -237,6 +239,87 @@ func TestServiceSettingsValidation(t *testing.T) {
 			handler.ServeHTTP(response, request)
 			if response.Code != http.StatusBadRequest {
 				t.Fatalf("unexpected status: %d", response.Code)
+			}
+		})
+	}
+}
+
+func TestServiceStatus(t *testing.T) {
+	now := time.Now().UTC()
+	for name, testCase := range map[string]struct {
+		service serviceconfig.Service
+		result  monitoring.Result
+		err     error
+		state   string
+		current bool
+	}{
+		"available":   {service: serviceconfig.Service{ID: "service-1", Enabled: true, IntervalSeconds: 60}, result: monitoring.Result{CheckedAt: now.Add(-30 * time.Second), Available: true}, state: "available", current: true},
+		"unavailable": {service: serviceconfig.Service{ID: "service-1", Enabled: true, IntervalSeconds: 60}, result: monitoring.Result{CheckedAt: now.Add(-30 * time.Second)}, state: "unavailable", current: true},
+		"stale":       {service: serviceconfig.Service{ID: "service-1", Enabled: true, IntervalSeconds: 10}, result: monitoring.Result{CheckedAt: now.Add(-31 * time.Second), Available: true}, state: "unknown"},
+		"no results":  {service: serviceconfig.Service{ID: "service-1", Enabled: true, IntervalSeconds: 60}, err: monitoring.ErrNotFound, state: "unknown"},
+		"paused":      {service: serviceconfig.Service{ID: "service-1", Enabled: false, IntervalSeconds: 60}, state: "paused"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+			reader := &stubCheckReader{result: testCase.result, err: testCase.err}
+			handler, sessions, services, _ := newTestHandler(reader, authentication)
+			services.service = testCase.service
+			request := httptest.NewRequest(http.MethodGet, "/api/services/service-1/status", nil)
+			request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"state":"`+testCase.state+`"`) {
+				t.Fatalf("unexpected response=%d body=%s", response.Code, response.Body.String())
+			}
+			if testCase.current != strings.Contains(response.Body.String(), `"current":true`) {
+				t.Fatalf("unexpected current state: %s", response.Body.String())
+			}
+			if name == "stale" && !strings.Contains(response.Body.String(), `"last_check"`) {
+				t.Fatalf("stale result was not preserved: %s", response.Body.String())
+			}
+			if name == "paused" && reader.requestedService != "" {
+				t.Fatalf("metrics must not be read for a paused service")
+			}
+		})
+	}
+}
+
+func TestDetermineStatusAtFreshnessBoundary(t *testing.T) {
+	now := time.Date(2026, time.November, 2, 12, 0, 0, 0, time.UTC)
+	service := serviceconfig.Service{Enabled: true, IntervalSeconds: 10}
+	result := monitoring.Result{CheckedAt: now.Add(-30 * time.Second), Available: true}
+	if status := determineStatus(service, result, now); status.State != "available" {
+		t.Fatalf("result at freshness boundary must be current: %+v", status)
+	}
+	result.CheckedAt = result.CheckedAt.Add(-time.Nanosecond)
+	if status := determineStatus(service, result, now); status.State != "unknown" || status.LastCheck == nil {
+		t.Fatalf("result beyond freshness boundary must be unknown with last check: %+v", status)
+	}
+}
+
+func TestServiceStatusProtectsForeignServiceAndMetricsFailure(t *testing.T) {
+	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+	for name, testCase := range map[string]struct {
+		repositoryError error
+		readerError     error
+		expected        int
+	}{
+		"foreign":         {repositoryError: serviceconfig.ErrNotFound, expected: http.StatusNotFound},
+		"metrics failure": {readerError: errors.New("metrics unavailable"), expected: http.StatusBadGateway},
+	} {
+		t.Run(name, func(t *testing.T) {
+			reader := &stubCheckReader{err: testCase.readerError}
+			handler, sessions, services, _ := newTestHandler(reader, authentication)
+			services.service = serviceconfig.Service{ID: "service-1", Enabled: true, IntervalSeconds: 60}
+			services.err = testCase.repositoryError
+			request := httptest.NewRequest(http.MethodGet, "/api/services/service-1/status", nil)
+			request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != testCase.expected {
+				t.Fatalf("unexpected status: %d: %s", response.Code, response.Body.String())
 			}
 		})
 	}
