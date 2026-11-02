@@ -1,7 +1,11 @@
 services:
+  checker:
+    restart: "no"
+
   scheduler:
     environment:
       SCHEDULER_INTERVAL: 10s
+      SCHEDULER_CONFIG_SYNC_INTERVAL: 2s
       CHECKER_JOB_RETRY_DELAY: 1s
       CHECKER_JOB_TTL: 1m
 

@@ -2,55 +2,43 @@ package serviceconfig
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"fmt"
+	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"gorm.io/gorm"
 )
+
+var ErrNotFound = errors.New("monitored service not found")
 
 const prototypeServiceID = "prototype-service"
 
 type Repository struct {
-	database *sql.DB
+	database *gorm.DB
 }
 
-func Open(ctx context.Context, dsn string) (*Repository, error) {
-	database, err := sql.Open("pgx", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("open PostgreSQL: %w", err)
-	}
-	if err := database.PingContext(ctx); err != nil {
-		_ = database.Close()
-		return nil, fmt.Errorf("connect to PostgreSQL: %w", err)
-	}
-
-	return &Repository{database: database}, nil
+type record struct {
+	ID        string `gorm:"default:gen_random_uuid()::text"`
+	OwnerID   *string
+	Name      string
+	URL       string
+	Enabled   bool
+	Version   int64
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt *time.Time
 }
 
-func (repository *Repository) Close() error {
-	return repository.database.Close()
+func (record) TableName() string { return "monitored_services" }
+
+func New(database *gorm.DB) *Repository {
+	return &Repository{database: database}
 }
 
 func (repository *Repository) Initialize(ctx context.Context, serviceURL string) error {
-	_, err := repository.database.ExecContext(ctx, `
-        CREATE TABLE IF NOT EXISTS monitored_services (
-            id TEXT PRIMARY KEY,
-            url TEXT NOT NULL,
-            enabled BOOLEAN NOT NULL,
-            version BIGINT NOT NULL,
-            updated_at TIMESTAMPTZ NOT NULL
-        )
-    `)
-	if err != nil {
-		return fmt.Errorf("create monitored services table: %w", err)
-	}
-
-	_, err = repository.database.ExecContext(ctx, `
-        INSERT INTO monitored_services (id, url, enabled, version, updated_at)
-        VALUES ($1, $2, TRUE, 1, NOW())
-        ON CONFLICT (id) DO NOTHING
-    `, prototypeServiceID, serviceURL)
-	if err != nil {
+	now := time.Now().UTC()
+	prototype := record{ID: prototypeServiceID, Name: "Демонстрационный сервис", URL: serviceURL, Enabled: true, Version: 1, CreatedAt: now, UpdatedAt: now}
+	if err := repository.database.WithContext(ctx).Where("id = ?", prototypeServiceID).FirstOrCreate(&prototype).Error; err != nil {
 		return fmt.Errorf("seed prototype service: %w", err)
 	}
 
@@ -58,33 +46,122 @@ func (repository *Repository) Initialize(ctx context.Context, serviceURL string)
 }
 
 func (repository *Repository) List(ctx context.Context) ([]Service, error) {
-	rows, err := repository.database.QueryContext(ctx, `
-        SELECT id, url, enabled, version, updated_at
-        FROM monitored_services
-        ORDER BY id
-    `)
-	if err != nil {
+	var records []record
+	if err := repository.database.WithContext(ctx).Where("deleted_at IS NULL").Order("id").Find(&records).Error; err != nil {
 		return nil, fmt.Errorf("query monitored services: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
 
-	services := make([]Service, 0)
-	for rows.Next() {
-		var service Service
-		if err := rows.Scan(
-			&service.ID,
-			&service.URL,
-			&service.Enabled,
-			&service.Version,
-			&service.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan monitored service: %w", err)
+	return toServices(records), nil
+}
+
+func (repository *Repository) ListForScheduler(ctx context.Context) ([]Service, error) {
+	var records []record
+	if err := repository.database.WithContext(ctx).Order("id").Find(&records).Error; err != nil {
+		return nil, fmt.Errorf("query scheduler monitored services: %w", err)
+	}
+	return toSchedulerServices(records), nil
+}
+
+func (repository *Repository) ListByOwner(ctx context.Context, ownerID string) ([]Service, error) {
+	var records []record
+	if err := repository.database.WithContext(ctx).Where("owner_id = ? AND deleted_at IS NULL", ownerID).Order("created_at DESC").Find(&records).Error; err != nil {
+		return nil, fmt.Errorf("query user monitored services: %w", err)
+	}
+
+	return toServices(records), nil
+}
+
+func (repository *Repository) ByIDAndOwner(ctx context.Context, ownerID, id string) (Service, error) {
+	var record record
+	database := repository.database.WithContext(ctx).Where("id = ? AND owner_id = ? AND deleted_at IS NULL", id, ownerID).First(&record)
+	if errors.Is(database.Error, gorm.ErrRecordNotFound) {
+		return Service{}, ErrNotFound
+	}
+	if database.Error != nil {
+		return Service{}, fmt.Errorf("find monitored service: %w", database.Error)
+	}
+
+	return toService(record), nil
+}
+
+func (repository *Repository) Create(ctx context.Context, ownerID, name, url string, enabled bool) (Service, error) {
+	now := time.Now().UTC()
+	record := record{OwnerID: &ownerID, Name: name, URL: url, Enabled: enabled, Version: 1, CreatedAt: now, UpdatedAt: now}
+	if err := repository.database.WithContext(ctx).Create(&record).Error; err != nil {
+		return Service{}, fmt.Errorf("create monitored service: %w", err)
+	}
+
+	return toService(record), nil
+}
+
+func (repository *Repository) Update(ctx context.Context, ownerID, id, name, url string, enabled bool) (Service, error) {
+	var record record
+	database := repository.database.WithContext(ctx).Where("id = ? AND owner_id = ? AND deleted_at IS NULL", id, ownerID).First(&record)
+	if errors.Is(database.Error, gorm.ErrRecordNotFound) {
+		return Service{}, ErrNotFound
+	}
+	if database.Error != nil {
+		return Service{}, fmt.Errorf("find monitored service: %w", database.Error)
+	}
+
+	record.Name = name
+	record.URL = url
+	record.Enabled = enabled
+	record.Version++
+	record.UpdatedAt = time.Now().UTC()
+	if err := repository.database.WithContext(ctx).Save(&record).Error; err != nil {
+		return Service{}, fmt.Errorf("update monitored service: %w", err)
+	}
+
+	return toService(record), nil
+}
+
+func (repository *Repository) Delete(ctx context.Context, ownerID, id string) (Service, error) {
+	var record record
+	database := repository.database.WithContext(ctx).Where("id = ? AND owner_id = ? AND deleted_at IS NULL", id, ownerID).First(&record)
+	if errors.Is(database.Error, gorm.ErrRecordNotFound) {
+		return Service{}, ErrNotFound
+	}
+	if database.Error != nil {
+		return Service{}, fmt.Errorf("find monitored service: %w", database.Error)
+	}
+
+	now := time.Now().UTC()
+	record.Enabled = false
+	record.Version++
+	record.UpdatedAt = now
+	record.DeletedAt = &now
+	if err := repository.database.WithContext(ctx).Save(&record).Error; err != nil {
+		return Service{}, fmt.Errorf("soft delete monitored service: %w", err)
+	}
+
+	return toService(record), nil
+}
+
+func toServices(records []record) []Service {
+	services := make([]Service, 0, len(records))
+	for _, record := range records {
+		services = append(services, toService(record))
+	}
+
+	return services
+}
+
+func toSchedulerServices(records []record) []Service {
+	services := toServices(records)
+	for index := range services {
+		if services[index].DeletedAt != nil {
+			services[index].Enabled = false
 		}
-		services = append(services, service)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate monitored services: %w", err)
+	return services
+}
+
+func toService(record record) Service {
+	ownerID := ""
+	if record.OwnerID != nil {
+		ownerID = *record.OwnerID
 	}
 
-	return services, nil
+	return Service{ID: record.ID, OwnerID: ownerID, Name: record.Name, URL: record.URL, Enabled: record.Enabled, Version: record.Version, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, DeletedAt: record.DeletedAt}
 }

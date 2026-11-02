@@ -17,7 +17,7 @@ type stubRepository struct {
 	err      error
 }
 
-func (stub stubRepository) List(context.Context) ([]serviceconfig.Service, error) {
+func (stub stubRepository) ListForScheduler(context.Context) ([]serviceconfig.Service, error) {
 	return stub.services, stub.err
 }
 
@@ -41,5 +41,16 @@ func TestGetSnapshot(t *testing.T) {
 	}
 	if len(response.Services) != 1 || response.Services[0].Id != "service-1" || response.Services[0].Version != 3 {
 		t.Fatalf("unexpected response: %+v", response)
+	}
+}
+
+func TestGetSnapshotIncludesDisabledDeletedService(t *testing.T) {
+	server := NewConfigurationServer(stubRepository{services: []serviceconfig.Service{{ID: "deleted-service", URL: "https://service.test", Enabled: false, Version: 4}}})
+	response, err := server.GetSnapshot(context.Background(), &configurationv1.GetSnapshotRequest{})
+	if err != nil {
+		t.Fatalf("get snapshot: %v", err)
+	}
+	if len(response.Services) != 1 || response.Services[0].GetEnabled() || response.Services[0].GetVersion() != 4 {
+		t.Fatalf("deleted service was not returned as disabled: %+v", response.Services)
 	}
 }
