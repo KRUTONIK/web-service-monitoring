@@ -225,7 +225,7 @@ func TestServiceSettingsValidation(t *testing.T) {
 	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
 	handler, sessions, _, _ := newTestHandler(&stubCheckReader{}, authentication)
 	for name, body := range map[string]string{
-		"unsupported interval": `{"name":"Service","url":"https://service.test","enabled":true,"interval_seconds":15,"timeout_seconds":5}`,
+		"unsupported interval":    `{"name":"Service","url":"https://service.test","enabled":true,"interval_seconds":15,"timeout_seconds":5}`,
 		"timeout equals interval": `{"name":"Service","url":"https://service.test","enabled":true,"interval_seconds":10,"timeout_seconds":10}`,
 	} {
 		t.Run(name, func(t *testing.T) {
