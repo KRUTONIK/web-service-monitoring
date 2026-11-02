@@ -9,8 +9,11 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('ru-RU')
 }
 
-function statusColor(available) {
-  return available ? 'green' : 'red'
+const statePresentation = {
+  available: { label: 'Доступен', color: 'green' },
+  unavailable: { label: 'Недоступен', color: 'red' },
+  unknown: { label: 'Нет актуальных данных', color: 'yellow' },
+  paused: { label: 'Мониторинг отключён', color: 'gray' },
 }
 
 export function ServiceDashboard() {
@@ -46,11 +49,12 @@ export function ServiceDashboard() {
 
   const services = servicesQuery.data ?? []
   const currentServiceID = services.some((service) => service.id === selectedID) ? selectedID : services[0]?.id ?? null
-  const latestQuery = useQuery({
-    queryKey: ['latest-check', currentServiceID],
-    queryFn: () => apiRequest(`/api/checks/latest?service_id=${currentServiceID}`),
+  const statusQuery = useQuery({
+    queryKey: ['service-status', currentServiceID],
+    queryFn: () => apiRequest(`/api/services/${currentServiceID}/status`),
     enabled: Boolean(currentServiceID),
     retry: false,
+    refetchInterval: 10_000,
   })
 
   if (servicesQuery.isPending) return <Loader />
@@ -94,7 +98,7 @@ export function ServiceDashboard() {
         </Card>
       )}
 
-      {selectedService && <LatestCheck query={latestQuery} />}
+      {selectedService && <ServiceStatus query={statusQuery} />}
 
       <Modal opened={creating} onClose={() => setCreating(false)} title="Новый сервис">
         {createMutation.error && <Alert mb="sm" color="red">{createMutation.error.message}</Alert>}
@@ -108,23 +112,28 @@ export function ServiceDashboard() {
   )
 }
 
-function LatestCheck({ query }) {
+function ServiceStatus({ query }) {
   if (query.isPending) return <div role="status" aria-label="Загрузка последней проверки"><Loader size="sm" /></div>
   if (query.isError) {
-    const text = query.error.status === 404 ? 'Результатов проверки пока нет.' : query.error.message
-    return <Alert color="yellow">{text}</Alert>
+    return <Alert color="red">{query.error.message}</Alert>
   }
-  const check = query.data
+  const status = query.data
+  const presentation = statePresentation[status.state] ?? statePresentation.unknown
+  const check = status.last_check
   return (
     <Card withBorder>
       <Stack gap="sm">
-        <Group justify="space-between"><Title order={3}>Последняя проверка</Title><Group gap="sm"><Badge color={statusColor(check.available)}>{check.available ? 'Доступен' : 'Недоступен'}</Badge><Button variant="default" size="xs" loading={query.isFetching} onClick={() => query.refetch()}>Обновить</Button></Group></Group>
-        <SimpleGrid cols={{ base: 1, sm: 3 }}>
-          <Metric label="HTTP-код" value={check.status_code || '—'} />
-          <Metric label="Время ответа" value={`${check.response_time_ms} мс`} />
-          <Metric label="Время проверки" value={formatDate(check.checked_at)} />
-        </SimpleGrid>
-        {check.error && <Alert color="red">{check.error}</Alert>}
+        <Group justify="space-between"><Title order={3}>Состояние сервиса</Title><Group gap="sm"><Badge color={presentation.color}>{presentation.label}</Badge><Button variant="default" size="xs" loading={query.isFetching} onClick={() => query.refetch()}>Обновить</Button></Group></Group>
+        {!check && status.state === 'unknown' && <Text c="dimmed">Проверок для сервиса пока нет.</Text>}
+        {check && <>
+          {!status.current && <Text c="dimmed">Показан последний известный результат.</Text>}
+          <SimpleGrid cols={{ base: 1, sm: 3 }}>
+            <Metric label="HTTP-код" value={check.status_code || '—'} />
+            <Metric label="Время ответа" value={`${check.response_time_ms} мс`} />
+            <Metric label="Время проверки" value={formatDate(check.checked_at)} />
+          </SimpleGrid>
+          {check.error && <Alert color="red">{check.error}</Alert>}
+        </>}
       </Stack>
     </Card>
   )
