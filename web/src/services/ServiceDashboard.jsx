@@ -80,6 +80,7 @@ export function ServiceDashboard() {
               <div>
                 <Title order={3}>{selectedService.name}</Title>
                 <Text size="sm" c="dimmed">{selectedService.url}</Text>
+                <Text size="sm" c="dimmed">Интервал: {selectedService.interval_seconds} с · Тайм-аут: {selectedService.timeout_seconds} с</Text>
               </div>
               <Badge color={selectedService.enabled ? 'green' : 'gray'}>{selectedService.enabled ? 'Включён' : 'Отключён'}</Badge>
             </Group>

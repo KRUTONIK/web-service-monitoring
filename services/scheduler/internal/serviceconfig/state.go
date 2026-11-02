@@ -7,11 +7,13 @@ import (
 )
 
 type Service struct {
-	ID        string    `json:"id"`
-	URL       string    `json:"url"`
-	Enabled   bool      `json:"enabled"`
-	Version   int64     `json:"version"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID              string    `json:"id"`
+	URL             string    `json:"url"`
+	Enabled         bool      `json:"enabled"`
+	IntervalSeconds int       `json:"interval_seconds"`
+	TimeoutSeconds  int       `json:"timeout_seconds"`
+	Version         int64     `json:"version"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type Snapshot struct {

@@ -15,6 +15,8 @@ const service = {
   name: 'Основной сайт',
   url: 'https://service.example',
   enabled: true,
+  interval_seconds: 60,
+  timeout_seconds: 5,
   version: 1,
   created_at: '2026-11-01T09:00:00Z',
   updated_at: '2026-11-01T09:00:00Z',
@@ -42,6 +44,7 @@ async function mockDashboard(page, { services = [service], latest = checkResult(
   await page.route('**/api/auth/me', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(user) }))
   await page.route('**/api/services', (route) => {
     if (route.request().method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(created ? [...services, createdService] : services) })
+    expect(route.request().postDataJSON()).toEqual({ name: 'Тестовый сервис', url: 'https://new.example', enabled: true, interval_seconds: 60, timeout_seconds: 5 })
     created = true
     return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(createdService) })
   })
@@ -91,6 +94,7 @@ test('создаёт сервис', async ({ page }) => {
   await page.getByRole('button', { name: 'Добавить сервис' }).click()
   await page.getByLabel('Название').fill('Тестовый сервис')
   await page.getByLabel('URL').fill('https://new.example')
+	await expect(page.getByText('Интервал проверки')).toBeVisible()
 	await page.getByRole('button', { name: 'Добавить', exact: true }).click()
 	await expect(page.getByRole('heading', { name: 'Тестовый сервис' })).toBeVisible()
 })
@@ -154,10 +158,10 @@ test('показывает ошибку Metrics API', async ({ page }) => {
 
 test('изменяет сервис', async ({ page }) => {
   const services = [{ ...service }]
-  const updated = { ...service, name: 'Изменённый сайт', url: 'https://updated.example', version: 2 }
+  const updated = { ...service, name: 'Изменённый сайт', url: 'https://updated.example', interval_seconds: 30, timeout_seconds: 7, version: 2 }
   await mockDashboard(page, { services })
   await page.route('**/api/services/service-1', (route) => {
-    expect(route.request().postDataJSON()).toEqual({ name: updated.name, url: updated.url, enabled: true })
+    expect(route.request().postDataJSON()).toEqual({ name: updated.name, url: updated.url, enabled: true, interval_seconds: 30, timeout_seconds: 7 })
     services[0] = updated
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify(updated) })
   })
@@ -165,6 +169,8 @@ test('изменяет сервис', async ({ page }) => {
   await page.getByRole('button', { name: 'Изменить' }).click()
   await page.getByLabel('Название').fill(updated.name)
   await page.getByLabel('URL').fill(updated.url)
+	await page.getByLabel('Интервал проверки').selectOption('30')
+	await page.getByLabel('Тайм-аут, с').fill('7')
   await page.getByRole('button', { name: 'Сохранить' }).click()
   await expect(page.getByRole('heading', { name: updated.name })).toBeVisible()
   await expect(page.getByText(updated.url)).toBeVisible()

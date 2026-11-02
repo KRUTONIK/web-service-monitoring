@@ -32,14 +32,14 @@ func TestGetSnapshotReturnsInternalError(t *testing.T) {
 func TestGetSnapshot(t *testing.T) {
 	updatedAt := time.Date(2026, 9, 25, 10, 30, 0, 0, time.UTC)
 	server := NewConfigurationServer(stubRepository{services: []serviceconfig.Service{{
-		ID: "service-1", URL: "https://service.test", Enabled: true, Version: 3, UpdatedAt: updatedAt,
+		ID: "service-1", URL: "https://service.test", Enabled: true, IntervalSeconds: 30, TimeoutSeconds: 7, Version: 3, UpdatedAt: updatedAt,
 	}}})
 
 	response, err := server.GetSnapshot(context.Background(), &configurationv1.GetSnapshotRequest{})
 	if err != nil {
 		t.Fatalf("get snapshot: %v", err)
 	}
-	if len(response.Services) != 1 || response.Services[0].Id != "service-1" || response.Services[0].Version != 3 {
+	if len(response.Services) != 1 || response.Services[0].Id != "service-1" || response.Services[0].Version != 3 || response.Services[0].IntervalSeconds != 30 || response.Services[0].TimeoutSeconds != 7 {
 		t.Fatalf("unexpected response: %+v", response)
 	}
 }
