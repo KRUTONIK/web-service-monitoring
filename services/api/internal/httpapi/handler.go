@@ -30,8 +30,8 @@ type authentication interface {
 type serviceRepository interface {
 	ListByOwner(context.Context, string) ([]serviceconfig.Service, error)
 	ByIDAndOwner(context.Context, string, string) (serviceconfig.Service, error)
-	Create(context.Context, string, string, string, bool) (serviceconfig.Service, error)
-	Update(context.Context, string, string, string, string, bool) (serviceconfig.Service, error)
+	Create(context.Context, string, string, string, bool, int, int) (serviceconfig.Service, error)
+	Update(context.Context, string, string, string, string, bool, int, int) (serviceconfig.Service, error)
 	Delete(context.Context, string, string) (serviceconfig.Service, error)
 }
 
@@ -74,9 +74,11 @@ type currentUser struct {
 }
 
 type serviceInput struct {
-	Name    string `json:"name"`
-	URL     string `json:"url"`
-	Enabled bool   `json:"enabled"`
+	Name            string `json:"name"`
+	URL             string `json:"url"`
+	Enabled         bool   `json:"enabled"`
+	IntervalSeconds int    `json:"interval_seconds"`
+	TimeoutSeconds  int    `json:"timeout_seconds"`
 }
 
 func (handler *handler) register(writer http.ResponseWriter, request *http.Request) {
@@ -157,7 +159,7 @@ func (handler *handler) createService(writer http.ResponseWriter, request *http.
 	if !ok {
 		return
 	}
-	service, err := handler.services.Create(request.Context(), currentUser.ID, input.Name, input.URL, input.Enabled)
+	service, err := handler.services.Create(request.Context(), currentUser.ID, input.Name, input.URL, input.Enabled, input.IntervalSeconds, input.TimeoutSeconds)
 	if err != nil {
 		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось создать сервис"})
 		return
@@ -176,7 +178,7 @@ func (handler *handler) updateService(writer http.ResponseWriter, request *http.
 	if !ok {
 		return
 	}
-	service, err := handler.services.Update(request.Context(), currentUser.ID, request.PathValue("id"), input.Name, input.URL, input.Enabled)
+	service, err := handler.services.Update(request.Context(), currentUser.ID, request.PathValue("id"), input.Name, input.URL, input.Enabled, input.IntervalSeconds, input.TimeoutSeconds)
 	if errors.Is(err, serviceconfig.ErrNotFound) {
 		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "Сервис не найден"})
 		return
@@ -282,12 +284,26 @@ func (handler *handler) decodeServiceInput(writer http.ResponseWriter, request *
 	}
 	input.Name = strings.TrimSpace(input.Name)
 	input.URL = strings.TrimSpace(input.URL)
+	if input.IntervalSeconds == 0 {
+		input.IntervalSeconds = 60
+	}
+	if input.TimeoutSeconds == 0 {
+		input.TimeoutSeconds = 5
+	}
 	if len(input.Name) == 0 || len(input.Name) > 100 {
 		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Укажите название сервиса длиной до 100 символов"})
 		return serviceInput{}, false
 	}
 	if len(input.URL) > 2048 || !isHTTPURL(input.URL) {
 		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Укажите корректный HTTP(S) URL"})
+		return serviceInput{}, false
+	}
+	if input.IntervalSeconds != 10 && input.IntervalSeconds != 30 && input.IntervalSeconds != 60 && input.IntervalSeconds != 300 {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Интервал проверки должен быть 10, 30, 60 или 300 секунд"})
+		return serviceInput{}, false
+	}
+	if input.TimeoutSeconds < 1 || input.TimeoutSeconds > 30 || input.TimeoutSeconds >= input.IntervalSeconds {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Тайм-аут должен быть от 1 до 30 секунд и меньше интервала проверки"})
 		return serviceInput{}, false
 	}
 

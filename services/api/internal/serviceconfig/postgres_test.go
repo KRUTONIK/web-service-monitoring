@@ -10,12 +10,12 @@ func TestToServicePreservesManagedServiceFields(t *testing.T) {
 	createdAt := time.Date(2026, time.November, 1, 9, 0, 0, 0, time.UTC)
 	updatedAt := createdAt.Add(time.Hour)
 
-	service := toService(record{ID: "service-1", OwnerID: &ownerID, Name: "Основной сайт", URL: "https://example.test", Enabled: true, Version: 2, CreatedAt: createdAt, UpdatedAt: updatedAt})
+	service := toService(record{ID: "service-1", OwnerID: &ownerID, Name: "Основной сайт", URL: "https://example.test", Enabled: true, IntervalSeconds: 60, TimeoutSeconds: 5, Version: 2, CreatedAt: createdAt, UpdatedAt: updatedAt})
 
 	if service.ID != "service-1" || service.OwnerID != ownerID || service.Name != "Основной сайт" {
 		t.Fatalf("unexpected service identity: %+v", service)
 	}
-	if service.URL != "https://example.test" || !service.Enabled || service.Version != 2 {
+	if service.URL != "https://example.test" || !service.Enabled || service.IntervalSeconds != 60 || service.TimeoutSeconds != 5 || service.Version != 2 {
 		t.Fatalf("unexpected service configuration: %+v", service)
 	}
 	if !service.CreatedAt.Equal(createdAt) || !service.UpdatedAt.Equal(updatedAt) {

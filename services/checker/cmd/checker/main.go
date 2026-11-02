@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/KRUTONIK/web-service-monitoring/contracts/jobs"
 	"github.com/KRUTONIK/web-service-monitoring/services/checker/internal/check"
@@ -16,7 +17,7 @@ import (
 func main() {
 	cfg := config.Load()
 	ctx := context.Background()
-	checker := check.New(&http.Client{Timeout: cfg.RequestTimeout})
+	checker := check.New(&http.Client{})
 	checkStorage := storage.NewInfluxDB(&http.Client{Timeout: cfg.StorageTimeout}, cfg.InfluxDBURL, cfg.InfluxDBOrg, cfg.InfluxDBBucket, cfg.InfluxDBToken)
 
 	broker, err := messaging.Open(cfg.RabbitMQURL)
@@ -41,7 +42,7 @@ type resultWriter interface {
 }
 
 func runJob(ctx context.Context, checker *check.Checker, checkStorage resultWriter, job jobs.CheckJob) error {
-	result := checker.Run(ctx, job.ServiceID, job.ServiceURL)
+	result := checker.Run(ctx, job.ServiceID, job.ServiceURL, time.Duration(job.TimeoutSeconds)*time.Second)
 	result.JobID = job.JobID
 	result.CheckedAt = job.ScheduledAt
 	if err := checkStorage.Write(ctx, result); err != nil {

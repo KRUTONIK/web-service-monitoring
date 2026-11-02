@@ -28,7 +28,7 @@ func TestRunJobWritesCheckResult(t *testing.T) {
 
 	writer := &stubWriter{}
 	scheduledAt := time.Date(2026, time.October, 11, 12, 0, 0, 0, time.UTC)
-	job := jobs.NewCheckJob("service-1", server.URL, scheduledAt)
+	job := jobs.NewCheckJob("service-1", server.URL, 5, scheduledAt)
 	if err := runJob(context.Background(), check.New(server.Client()), writer, job); err != nil {
 		t.Fatalf("run check job: %v", err)
 	}

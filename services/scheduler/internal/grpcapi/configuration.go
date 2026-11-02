@@ -34,7 +34,7 @@ func (client *ConfigurationClient) Snapshot(ctx context.Context) (serviceconfig.
 	}
 	snapshot := serviceconfig.Snapshot{Services: make([]serviceconfig.Service, 0, len(response.Services))}
 	for _, service := range response.Services {
-		snapshot.Services = append(snapshot.Services, serviceconfig.Service{ID: service.Id, URL: service.Url, Enabled: service.Enabled, Version: service.Version, UpdatedAt: service.UpdatedAt.AsTime()})
+		snapshot.Services = append(snapshot.Services, serviceconfig.Service{ID: service.Id, URL: service.Url, Enabled: service.Enabled, IntervalSeconds: int(service.IntervalSeconds), TimeoutSeconds: int(service.TimeoutSeconds), Version: service.Version, UpdatedAt: service.UpdatedAt.AsTime()})
 	}
 	return snapshot, nil
 }

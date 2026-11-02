@@ -57,11 +57,11 @@ func (stub *stubServiceRepository) ByIDAndOwner(_ context.Context, ownerID, serv
 	stub.ownerID, stub.serviceID = ownerID, serviceID
 	return stub.service, stub.err
 }
-func (stub *stubServiceRepository) Create(_ context.Context, ownerID, _, _ string, _ bool) (serviceconfig.Service, error) {
+func (stub *stubServiceRepository) Create(_ context.Context, ownerID, _, _ string, _ bool, _, _ int) (serviceconfig.Service, error) {
 	stub.ownerID = ownerID
 	return stub.created, stub.err
 }
-func (stub *stubServiceRepository) Update(_ context.Context, ownerID, serviceID, _, _ string, _ bool) (serviceconfig.Service, error) {
+func (stub *stubServiceRepository) Update(_ context.Context, ownerID, serviceID, _, _ string, _ bool, _, _ int) (serviceconfig.Service, error) {
 	stub.ownerID, stub.serviceID = ownerID, serviceID
 	return stub.updated, stub.err
 }
@@ -218,6 +218,27 @@ func TestMutatingRequestRejectsForeignOrigin(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("unexpected status: %d", response.Code)
+	}
+}
+
+func TestServiceSettingsValidation(t *testing.T) {
+	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+	handler, sessions, _, _ := newTestHandler(&stubCheckReader{}, authentication)
+	for name, body := range map[string]string{
+		"unsupported interval":    `{"name":"Service","url":"https://service.test","enabled":true,"interval_seconds":15,"timeout_seconds":5}`,
+		"timeout equals interval": `{"name":"Service","url":"https://service.test","enabled":true,"interval_seconds":10,"timeout_seconds":10}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/api/services", strings.NewReader(body))
+			request.Header.Set("Origin", testOrigin)
+			request.Header.Set("Content-Type", "application/json")
+			request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("unexpected status: %d", response.Code)
+			}
+		})
 	}
 }
 

@@ -55,7 +55,7 @@ func (broker *Broker) PublishJobs(ctx context.Context, services []serviceconfig.
 
 	scheduledAt := time.Now().UTC()
 	for _, service := range services {
-		job := jobs.NewCheckJob(service.ID, service.URL, scheduledAt)
+		job := jobs.NewCheckJob(service.ID, service.URL, service.TimeoutSeconds, scheduledAt)
 		body, err := json.Marshal(job)
 		if err != nil {
 			return fmt.Errorf("encode check job: %w", err)
