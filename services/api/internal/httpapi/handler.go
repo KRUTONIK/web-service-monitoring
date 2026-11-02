@@ -345,7 +345,7 @@ func (handler *handler) allowCORS(next http.Handler) http.Handler {
 				writeJSON(writer, http.StatusForbidden, map[string]string{"error": "Недопустимый источник запроса"})
 				return
 			}
-			writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 			writer.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 			writer.WriteHeader(http.StatusNoContent)
 			return

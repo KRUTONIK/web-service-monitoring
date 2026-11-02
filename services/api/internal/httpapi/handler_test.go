@@ -221,6 +221,62 @@ func TestMutatingRequestRejectsForeignOrigin(t *testing.T) {
 	}
 }
 
+func TestCORSPreflightForServiceMutations(t *testing.T) {
+	handler, _, _, _ := newTestHandler(&stubCheckReader{}, &stubAuthentication{})
+	for name, path := range map[string]string{
+		"create": "/api/services",
+		"update": "/api/services/service-1",
+		"delete": "/api/services/service-1",
+	} {
+		t.Run(name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodOptions, path, nil)
+			request.Header.Set("Origin", testOrigin)
+			request.Header.Set("Access-Control-Request-Method", map[string]string{
+				"create": http.MethodPost,
+				"update": http.MethodPut,
+				"delete": http.MethodDelete,
+			}[name])
+			request.Header.Set("Access-Control-Request-Headers", "Content-Type")
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusNoContent {
+				t.Fatalf("unexpected status: %d", response.Code)
+			}
+			if response.Header().Get("Access-Control-Allow-Origin") != testOrigin {
+				t.Fatalf("unexpected allowed origin: %q", response.Header().Get("Access-Control-Allow-Origin"))
+			}
+			if response.Header().Get("Access-Control-Allow-Methods") != "GET, POST, PUT, DELETE, OPTIONS" {
+				t.Fatalf("unexpected allowed methods: %q", response.Header().Get("Access-Control-Allow-Methods"))
+			}
+			if response.Header().Get("Access-Control-Allow-Headers") != "Content-Type" {
+				t.Fatalf("unexpected allowed headers: %q", response.Header().Get("Access-Control-Allow-Headers"))
+			}
+			if response.Header().Get("Access-Control-Allow-Credentials") != "true" {
+				t.Fatal("credentialed CORS header was not set")
+			}
+		})
+	}
+}
+
+func TestCORSPreflightRejectsForeignOrigin(t *testing.T) {
+	handler, _, _, _ := newTestHandler(&stubCheckReader{}, &stubAuthentication{})
+	request := httptest.NewRequest(http.MethodOptions, "/api/services/service-1", nil)
+	request.Header.Set("Origin", "https://foreign.example")
+	request.Header.Set("Access-Control-Request-Method", http.MethodDelete)
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("unexpected status: %d", response.Code)
+	}
+	if response.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatalf("foreign origin was allowed: %q", response.Header().Get("Access-Control-Allow-Origin"))
+	}
+}
+
 func TestCreateServicePublishesConfiguration(t *testing.T) {
 	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
 	handler, sessions, services, publisher := newTestHandler(&stubCheckReader{}, authentication)

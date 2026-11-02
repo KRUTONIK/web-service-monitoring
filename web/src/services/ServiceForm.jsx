@@ -8,7 +8,7 @@ export function ServiceForm({ service, onSubmit, pending, submitLabel = 'Сох�
 
   function submit(event) {
     event.preventDefault()
-    onSubmit(form)
+    onSubmit({ name: form.name, url: form.url, enabled: form.enabled })
   }
 
   return (

@@ -157,6 +157,7 @@ test('изменяет сервис', async ({ page }) => {
   const updated = { ...service, name: 'Изменённый сайт', url: 'https://updated.example', version: 2 }
   await mockDashboard(page, { services })
   await page.route('**/api/services/service-1', (route) => {
+    expect(route.request().postDataJSON()).toEqual({ name: updated.name, url: updated.url, enabled: true })
     services[0] = updated
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify(updated) })
   })
