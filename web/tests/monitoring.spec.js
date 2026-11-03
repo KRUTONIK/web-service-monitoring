@@ -38,7 +38,11 @@ async function mockUnauthenticated(page) {
   await page.route('**/api/auth/me', (route) => route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'Требуется аутентификация' }) }))
 }
 
-async function mockDashboard(page, { services = [service], latest = checkResult(), latestStatus = 200, latestHandler } = {}) {
+function serviceStatus(overrides = {}) {
+  return { state: 'available', current: true, last_check: checkResult(), ...overrides }
+}
+
+async function mockDashboard(page, { services = [service], status = serviceStatus(), statusCode = 200, statusHandler } = {}) {
   let created = false
   const createdService = { ...service, id: 'service-2', name: 'Тестовый сервис', url: 'https://new.example' }
   await page.route('**/api/auth/me', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(user) }))
@@ -48,9 +52,9 @@ async function mockDashboard(page, { services = [service], latest = checkResult(
     created = true
     return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(createdService) })
   })
-  await page.route('**/api/checks/latest?service_id=service-1', (route) => {
-    if (latestHandler) return latestHandler(route)
-    return route.fulfill({ status: latestStatus, contentType: 'application/json', body: JSON.stringify(latest) })
+  await page.route('**/api/services/*/status', (route) => {
+    if (statusHandler) return statusHandler(route)
+    return route.fulfill({ status: statusCode, contentType: 'application/json', body: JSON.stringify(status) })
   })
 }
 
@@ -73,7 +77,7 @@ test('регистрирует пользователя и открывает п
   await expect(page.getByText('Сервисов пока нет. Добавьте первый сервис для мониторинга.')).toBeVisible()
 })
 
-test('показывает сервис и последнюю проверку', async ({ page }) => {
+test('показывает сервис и актуальное состояние', async ({ page }) => {
   await mockDashboard(page)
   await page.goto('/')
 	await expect(page.getByRole('heading', { name: 'Основной сайт' })).toBeVisible()
@@ -83,9 +87,9 @@ test('показывает сервис и последнюю проверку',
 })
 
 test('сообщает об отсутствии результатов проверки', async ({ page }) => {
-  await mockDashboard(page, { latest: { error: 'Результатов нет' }, latestStatus: 404 })
+  await mockDashboard(page, { status: serviceStatus({ state: 'unknown', current: false, last_check: undefined }) })
   await page.goto('/')
-  await expect(page.getByText('Результатов проверки пока нет.')).toBeVisible()
+  await expect(page.getByText('Проверок для сервиса пока нет.')).toBeVisible()
 })
 
 test('создаёт сервис', async ({ page }) => {
@@ -107,26 +111,26 @@ test('завершает сессию', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Войти' })).toBeVisible()
 })
 
-test('показывает загрузку последней проверки и затем результат', async ({ page }) => {
-  let releaseLatest
-  const latestResponse = new Promise((resolve) => { releaseLatest = resolve })
+test('показывает загрузку состояния и затем результат', async ({ page }) => {
+  let releaseStatus
+  const statusResponse = new Promise((resolve) => { releaseStatus = resolve })
   await mockDashboard(page, {
-    latestHandler: async (route) => {
-      await latestResponse
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify(checkResult()) })
+    statusHandler: async (route) => {
+      await statusResponse
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify(serviceStatus()) })
     },
   })
 
   const navigation = page.goto('/', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('status', { name: 'Загрузка последней проверки' })).toBeVisible()
-  releaseLatest()
+  releaseStatus()
   await navigation
   await expect(page.getByText('Доступен')).toBeVisible()
 })
 
 test('показывает недоступность сервиса и детали ошибки', async ({ page }) => {
   await mockDashboard(page, {
-    latest: checkResult({ available: false, status_code: 503, response_time_ms: 215, error: 'Сервис временно недоступен' }),
+    status: serviceStatus({ state: 'unavailable', last_check: checkResult({ available: false, status_code: 503, response_time_ms: 215, error: 'Сервис временно недоступен' }) }),
   })
   await page.goto('/')
   await expect(page.getByText('Недоступен', { exact: true })).toBeVisible()
@@ -135,12 +139,12 @@ test('показывает недоступность сервиса и дета
   await expect(page.getByText('Сервис временно недоступен')).toBeVisible()
 })
 
-test('обновляет последнюю проверку вручную без перезагрузки страницы', async ({ page }) => {
+test('обновляет состояние вручную без перезагрузки страницы', async ({ page }) => {
   let requests = 0
   await mockDashboard(page, {
-    latestHandler: (route) => {
+    statusHandler: (route) => {
       requests += 1
-      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(checkResult({ response_time_ms: requests === 1 ? 42 : 87 })) })
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(serviceStatus({ last_check: checkResult({ response_time_ms: requests === 1 ? 42 : 87 }) })) })
     },
   })
   await page.goto('/')
@@ -151,9 +155,56 @@ test('обновляет последнюю проверку вручную бе
 })
 
 test('показывает ошибку Metrics API', async ({ page }) => {
-  await mockDashboard(page, { latestStatus: 502, latest: { error: 'Не удалось получить данные метрик' } })
+  await mockDashboard(page, { statusCode: 502, status: { error: 'Не удалось получить данные метрик' } })
   await page.goto('/')
   await expect(page.getByText('Не удалось получить данные метрик')).toBeVisible()
+})
+
+test('показывает устаревший результат как неактуальные данные', async ({ page }) => {
+  await mockDashboard(page, { status: serviceStatus({ state: 'unknown', current: false }) })
+  await page.goto('/')
+  await expect(page.getByText('Нет актуальных данных')).toBeVisible()
+  await expect(page.getByText('Показан последний известный результат.')).toBeVisible()
+  await expect(page.getByText('42 мс')).toBeVisible()
+})
+
+test('показывает отключённый мониторинг', async ({ page }) => {
+  await mockDashboard(page, { status: serviceStatus({ state: 'paused', current: false, last_check: undefined }) })
+  await page.goto('/')
+  await expect(page.getByText('Мониторинг отключён')).toBeVisible()
+})
+
+test('обновляет состояние автоматически через 10 секунд', async ({ page }) => {
+  await page.clock.install()
+  let requests = 0
+  await mockDashboard(page, {
+    statusHandler: (route) => {
+      requests += 1
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(serviceStatus({ last_check: checkResult({ response_time_ms: requests === 1 ? 42 : 64 }) })) })
+    },
+  })
+  await page.goto('/')
+  await expect(page.getByText('42 мс')).toBeVisible()
+  await page.clock.fastForward(10_000)
+  await expect(page.getByText('64 мс')).toBeVisible()
+  expect(requests).toBe(2)
+})
+
+test('при переключении сервиса показывает только его состояние', async ({ page }) => {
+  const second = { ...service, id: 'service-2', name: 'Второй сайт', url: 'https://second.example' }
+  await mockDashboard(page, {
+    services: [service, second],
+    statusHandler: (route) => {
+      const isSecond = route.request().url().includes('/service-2/status')
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(serviceStatus({ state: isSecond ? 'unavailable' : 'available', last_check: checkResult({ service_id: isSecond ? second.id : service.id, response_time_ms: isSecond ? 99 : 42 }) })) })
+    },
+  })
+  await page.goto('/')
+  await expect(page.getByText('42 мс')).toBeVisible()
+  await page.getByRole('textbox', { name: 'Выбранный сервис' }).click()
+  await page.getByRole('option', { name: 'Второй сайт', exact: true }).click()
+  await expect(page.getByText('99 мс')).toBeVisible()
+  await expect(page.getByText('Недоступен', { exact: true })).toBeVisible()
 })
 
 test('изменяет сервис', async ({ page }) => {

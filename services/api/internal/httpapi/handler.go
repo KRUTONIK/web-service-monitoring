@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/auth"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/monitoring"
@@ -61,6 +62,7 @@ func New(checks checkReader, authService authentication, sessions *scs.SessionMa
 	mux.HandleFunc("PUT /api/services/{id}", handler.updateService)
 	mux.HandleFunc("DELETE /api/services/{id}", handler.deleteService)
 	mux.HandleFunc("GET /api/checks/latest", handler.latestCheck)
+	mux.HandleFunc("GET /api/services/{id}/status", handler.serviceStatus)
 	return handler.allowCORS(mux)
 }
 
@@ -77,8 +79,14 @@ type serviceInput struct {
 	Name            string `json:"name"`
 	URL             string `json:"url"`
 	Enabled         bool   `json:"enabled"`
-	IntervalSeconds int    `json:"interval_seconds"`
-	TimeoutSeconds  int    `json:"timeout_seconds"`
+	IntervalSeconds *int   `json:"interval_seconds"`
+	TimeoutSeconds  *int   `json:"timeout_seconds"`
+}
+
+type statusResponse struct {
+	State     string             `json:"state"`
+	Current   bool               `json:"current"`
+	LastCheck *monitoring.Result `json:"last_check,omitempty"`
 }
 
 func (handler *handler) register(writer http.ResponseWriter, request *http.Request) {
@@ -159,7 +167,7 @@ func (handler *handler) createService(writer http.ResponseWriter, request *http.
 	if !ok {
 		return
 	}
-	service, err := handler.services.Create(request.Context(), currentUser.ID, input.Name, input.URL, input.Enabled, input.IntervalSeconds, input.TimeoutSeconds)
+	service, err := handler.services.Create(request.Context(), currentUser.ID, input.Name, input.URL, input.Enabled, input.intervalSeconds(), input.timeoutSeconds())
 	if err != nil {
 		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось создать сервис"})
 		return
@@ -178,7 +186,7 @@ func (handler *handler) updateService(writer http.ResponseWriter, request *http.
 	if !ok {
 		return
 	}
-	service, err := handler.services.Update(request.Context(), currentUser.ID, request.PathValue("id"), input.Name, input.URL, input.Enabled, input.IntervalSeconds, input.TimeoutSeconds)
+	service, err := handler.services.Update(request.Context(), currentUser.ID, request.PathValue("id"), input.Name, input.URL, input.Enabled, input.intervalSeconds(), input.timeoutSeconds())
 	if errors.Is(err, serviceconfig.ErrNotFound) {
 		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "Сервис не найден"})
 		return
@@ -243,6 +251,52 @@ func (handler *handler) latestCheck(writer http.ResponseWriter, request *http.Re
 	writeJSON(writer, http.StatusOK, result)
 }
 
+func (handler *handler) serviceStatus(writer http.ResponseWriter, request *http.Request) {
+	currentUser, ok := handler.currentUser(writer, request)
+	if !ok {
+		return
+	}
+	service, err := handler.services.ByIDAndOwner(request.Context(), currentUser.ID, request.PathValue("id"))
+	if errors.Is(err, serviceconfig.ErrNotFound) {
+		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "Сервис не найден"})
+		return
+	}
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось проверить доступ к сервису"})
+		return
+	}
+	if !service.Enabled {
+		writeJSON(writer, http.StatusOK, statusResponse{State: "paused"})
+		return
+	}
+	result, err := handler.checks.Latest(request.Context(), service.ID)
+	if errors.Is(err, monitoring.ErrNotFound) {
+		writeJSON(writer, http.StatusOK, statusResponse{State: "unknown"})
+		return
+	}
+	if err != nil {
+		writeJSON(writer, http.StatusBadGateway, map[string]string{"error": "Не удалось получить данные метрик"})
+		return
+	}
+	writeJSON(writer, http.StatusOK, determineStatus(service, result, time.Now().UTC()))
+}
+
+func determineStatus(service serviceconfig.Service, result monitoring.Result, now time.Time) statusResponse {
+	response := statusResponse{LastCheck: &result}
+	maxAge := time.Duration(2*service.IntervalSeconds)*time.Second + 10*time.Second
+	if result.CheckedAt.Add(maxAge).Before(now) {
+		response.State = "unknown"
+		return response
+	}
+	response.Current = true
+	if result.Available {
+		response.State = "available"
+	} else {
+		response.State = "unavailable"
+	}
+	return response
+}
+
 func (handler *handler) health(writer http.ResponseWriter, _ *http.Request) {
 	writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -284,12 +338,6 @@ func (handler *handler) decodeServiceInput(writer http.ResponseWriter, request *
 	}
 	input.Name = strings.TrimSpace(input.Name)
 	input.URL = strings.TrimSpace(input.URL)
-	if input.IntervalSeconds == 0 {
-		input.IntervalSeconds = 60
-	}
-	if input.TimeoutSeconds == 0 {
-		input.TimeoutSeconds = 5
-	}
 	if len(input.Name) == 0 || len(input.Name) > 100 {
 		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Укажите название сервиса длиной до 100 символов"})
 		return serviceInput{}, false
@@ -298,16 +346,30 @@ func (handler *handler) decodeServiceInput(writer http.ResponseWriter, request *
 		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Укажите корректный HTTP(S) URL"})
 		return serviceInput{}, false
 	}
-	if input.IntervalSeconds != 10 && input.IntervalSeconds != 30 && input.IntervalSeconds != 60 && input.IntervalSeconds != 300 {
+	if interval := input.intervalSeconds(); interval != 10 && interval != 30 && interval != 60 && interval != 300 {
 		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Интервал проверки должен быть 10, 30, 60 или 300 секунд"})
 		return serviceInput{}, false
 	}
-	if input.TimeoutSeconds < 1 || input.TimeoutSeconds > 30 || input.TimeoutSeconds >= input.IntervalSeconds {
+	if timeout := input.timeoutSeconds(); timeout < 1 || timeout > 30 || timeout >= input.intervalSeconds() {
 		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Тайм-аут должен быть от 1 до 30 секунд и меньше интервала проверки"})
 		return serviceInput{}, false
 	}
 
 	return input, true
+}
+
+func (input serviceInput) intervalSeconds() int {
+	if input.IntervalSeconds == nil {
+		return 60
+	}
+	return *input.IntervalSeconds
+}
+
+func (input serviceInput) timeoutSeconds() int {
+	if input.TimeoutSeconds == nil {
+		return 5
+	}
+	return *input.TimeoutSeconds
 }
 
 func isHTTPURL(value string) bool {
