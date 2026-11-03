@@ -40,7 +40,9 @@ type serviceRepository interface {
 type configurationPublisher interface {
 	Publish(context.Context, serviceconfig.Update) error
 }
-type incidentRepository interface { ListByService(context.Context, string) ([]incident.Incident, error) }
+type incidentRepository interface {
+	ListByService(context.Context, string) ([]incident.Incident, error)
+}
 
 type handler struct {
 	checks    checkReader
@@ -71,12 +73,24 @@ func New(checks checkReader, authService authentication, sessions *scs.SessionMa
 }
 
 func (handler *handler) listIncidents(writer http.ResponseWriter, request *http.Request) {
-	currentUser, ok := handler.currentUser(writer, request); if !ok { return }
+	currentUser, ok := handler.currentUser(writer, request)
+	if !ok {
+		return
+	}
 	service, err := handler.services.ByIDAndOwner(request.Context(), currentUser.ID, request.PathValue("id"))
-	if errors.Is(err, serviceconfig.ErrNotFound) { writeJSON(writer, http.StatusNotFound, map[string]string{"error":"Сервис не найден"}); return }
-	if err != nil { writeJSON(writer, http.StatusInternalServerError, map[string]string{"error":"Не удалось проверить доступ к сервису"}); return }
+	if errors.Is(err, serviceconfig.ErrNotFound) {
+		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "Сервис не найден"})
+		return
+	}
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось проверить доступ к сервису"})
+		return
+	}
 	values, err := handler.incidents.ListByService(request.Context(), service.ID)
-	if err != nil { writeJSON(writer, http.StatusInternalServerError, map[string]string{"error":"Не удалось получить историю инцидентов"}); return }
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось получить историю инцидентов"})
+		return
+	}
 	writeJSON(writer, http.StatusOK, values)
 }
 

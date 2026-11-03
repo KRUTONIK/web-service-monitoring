@@ -45,11 +45,15 @@ type resultWriter interface {
 	Latest(context.Context, string) (check.Result, error)
 }
 
-type incidentPublisher interface { PublishIncident(context.Context, contracts.Event) error }
+type incidentPublisher interface {
+	PublishIncident(context.Context, contracts.Event) error
+}
 
 func runJob(ctx context.Context, checker *check.Checker, checkStorage resultWriter, publisher incidentPublisher, job jobs.CheckJob) error {
 	previous, previousErr := checkStorage.Latest(ctx, job.ServiceID)
-	if previousErr != nil && !errors.Is(previousErr, storage.ErrNotFound) { return fmt.Errorf("read previous result: %w", previousErr) }
+	if previousErr != nil && !errors.Is(previousErr, storage.ErrNotFound) {
+		return fmt.Errorf("read previous result: %w", previousErr)
+	}
 	result := checker.Run(ctx, job.ServiceID, job.ServiceURL, time.Duration(job.TimeoutSeconds)*time.Second)
 	result.JobID = job.JobID
 	result.CheckedAt = job.ScheduledAt
@@ -57,7 +61,9 @@ func runJob(ctx context.Context, checker *check.Checker, checkStorage resultWrit
 		return fmt.Errorf("store result: %w", err)
 	}
 	if event := incident.Transition(previous, previousErr == nil, result); event != nil {
-		if err := publisher.PublishIncident(ctx, *event); err != nil { return fmt.Errorf("publish incident event: %w", err) }
+		if err := publisher.PublishIncident(ctx, *event); err != nil {
+			return fmt.Errorf("publish incident event: %w", err)
+		}
 	}
 	log.Printf("checked service=%s url=%s available=%t status=%d response_time_ms=%d", job.ServiceID, job.ServiceURL, result.Available, result.StatusCode, result.ResponseTimeMS)
 	return nil

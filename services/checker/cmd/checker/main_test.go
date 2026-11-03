@@ -13,14 +13,21 @@ import (
 )
 
 type stubWriter struct {
-	result check.Result
+	result   check.Result
 	previous check.Result
-	err error
+	err      error
 }
 
-func (stub *stubWriter) Latest(_ context.Context, _ string) (check.Result, error) { return stub.previous, stub.err }
-type stubPublisher struct { events []contracts.Event }
-func (stub *stubPublisher) PublishIncident(_ context.Context, event contracts.Event) error { stub.events = append(stub.events, event); return nil }
+func (stub *stubWriter) Latest(_ context.Context, _ string) (check.Result, error) {
+	return stub.previous, stub.err
+}
+
+type stubPublisher struct{ events []contracts.Event }
+
+func (stub *stubPublisher) PublishIncident(_ context.Context, event contracts.Event) error {
+	stub.events = append(stub.events, event)
+	return nil
+}
 
 func (stub *stubWriter) Write(_ context.Context, result check.Result) error {
 	stub.result = result
@@ -50,9 +57,17 @@ func TestRunJobPublishesOnlyAvailabilityTransitions(t *testing.T) {
 	writer := &stubWriter{previous: check.Result{Available: true}}
 	publisher := &stubPublisher{}
 	job := jobs.NewCheckJob("service-1", server.URL, 5, time.Now().UTC())
-	if err := runJob(context.Background(), check.New(server.Client()), writer, publisher, job); err != nil { t.Fatalf("run check job: %v", err) }
-	if len(publisher.events) != 1 || publisher.events[0].Type != contracts.Started { t.Fatalf("unexpected events: %+v", publisher.events) }
+	if err := runJob(context.Background(), check.New(server.Client()), writer, publisher, job); err != nil {
+		t.Fatalf("run check job: %v", err)
+	}
+	if len(publisher.events) != 1 || publisher.events[0].Type != contracts.Started {
+		t.Fatalf("unexpected events: %+v", publisher.events)
+	}
 	writer.previous = writer.result
-	if err := runJob(context.Background(), check.New(server.Client()), writer, publisher, job); err != nil { t.Fatalf("redelivery: %v", err) }
-	if len(publisher.events) != 1 { t.Fatalf("redelivery created duplicate event: %+v", publisher.events) }
+	if err := runJob(context.Background(), check.New(server.Client()), writer, publisher, job); err != nil {
+		t.Fatalf("redelivery: %v", err)
+	}
+	if len(publisher.events) != 1 {
+		t.Fatalf("redelivery created duplicate event: %+v", publisher.events)
+	}
 }

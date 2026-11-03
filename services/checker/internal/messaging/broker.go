@@ -48,12 +48,20 @@ func (broker *Broker) Close() error { return broker.connection.Close() }
 
 func (broker *Broker) PublishIncident(ctx context.Context, event incidents.Event) error {
 	body, err := json.Marshal(event)
-	if err != nil { return fmt.Errorf("encode incident event: %w", err) }
+	if err != nil {
+		return fmt.Errorf("encode incident event: %w", err)
+	}
 	channel, err := broker.connection.Channel()
-	if err != nil { return fmt.Errorf("open incident channel: %w", err) }
+	if err != nil {
+		return fmt.Errorf("open incident channel: %w", err)
+	}
 	defer func() { _ = channel.Close() }()
-	if _, err := channel.QueueDeclare(contractsmessaging.IncidentEventsQueue, true, false, false, false, nil); err != nil { return fmt.Errorf("declare incidents queue: %w", err) }
-	if err := channel.PublishWithContext(ctx, "", contractsmessaging.IncidentEventsQueue, false, false, amqp.Publishing{ContentType: "application/json", DeliveryMode: amqp.Persistent, Body: body}); err != nil { return fmt.Errorf("publish incident event: %w", err) }
+	if _, err := channel.QueueDeclare(contractsmessaging.IncidentEventsQueue, true, false, false, false, nil); err != nil {
+		return fmt.Errorf("declare incidents queue: %w", err)
+	}
+	if err := channel.PublishWithContext(ctx, "", contractsmessaging.IncidentEventsQueue, false, false, amqp.Publishing{ContentType: "application/json", DeliveryMode: amqp.Persistent, Body: body}); err != nil {
+		return fmt.Errorf("publish incident event: %w", err)
+	}
 	return nil
 }
 

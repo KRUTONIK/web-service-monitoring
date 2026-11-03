@@ -55,9 +55,15 @@ func main() {
 		log.Fatalf("publish prototype configuration: %v", err)
 	}
 	incidentConsumer, err := messaging.OpenIncidentConsumer(cfg.RabbitMQURL, incidentRepository)
-	if err != nil { log.Fatalf("initialize incident messaging: %v", err) }
+	if err != nil {
+		log.Fatalf("initialize incident messaging: %v", err)
+	}
 	defer func() { _ = incidentConsumer.Close() }()
-	go func() { if err := incidentConsumer.Consume(ctx); err != nil { log.Printf("consume incident events: %v", err) } }()
+	go func() {
+		if err := incidentConsumer.Consume(ctx); err != nil {
+			log.Printf("consume incident events: %v", err)
+		}
+	}()
 	metricsClient, err := grpcapi.OpenMetricsClient(cfg.MetricsTarget, cfg.RequestTimeout)
 	if err != nil {
 		log.Fatalf("initialize Metrics Service client: %v", err)
