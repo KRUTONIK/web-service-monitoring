@@ -3,10 +3,13 @@ package storage
 import (
 	"bytes"
 	"context"
+	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +17,8 @@ import (
 )
 
 const measurementName = "service_check"
+
+var ErrNotFound = errors.New("check result not found")
 
 const (
 	maxWriteAttempts = 3
@@ -51,6 +56,76 @@ func (influx *InfluxDB) Write(ctx context.Context, result check.Result) error {
 	}
 
 	return nil
+}
+
+func (influx *InfluxDB) Latest(ctx context.Context, serviceID string) (check.Result, error) {
+	endpoint, err := url.Parse(influx.baseURL + "/api/v2/query")
+	if err != nil {
+		return check.Result{}, fmt.Errorf("parse InfluxDB URL: %w", err)
+	}
+	query := endpoint.Query()
+	query.Set("org", influx.org)
+	endpoint.RawQuery = query.Encode()
+	flux := fmt.Sprintf(`from(bucket: %q)
+  |> range(start: -24h)
+  |> filter(fn: (r) => r._measurement == "service_check" and r.service_id == %q)
+  |> pivot(rowKey: ["_time", "job_id", "service_id", "service_url"], columnKey: ["_field"], valueColumn: "_value")
+  |> group()
+  |> sort(columns: ["_time"], desc: true)
+  |> limit(n: 1)`, influx.bucket, serviceID)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewBufferString(flux))
+	if err != nil {
+		return check.Result{}, fmt.Errorf("create InfluxDB query: %w", err)
+	}
+	request.Header.Set("Authorization", "Token "+influx.token)
+	request.Header.Set("Accept", "application/csv")
+	request.Header.Set("Content-Type", "application/vnd.flux")
+	response, err := influx.client.Do(request)
+	if err != nil {
+		return check.Result{}, fmt.Errorf("query InfluxDB: %w", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		return check.Result{}, fmt.Errorf("InfluxDB returned %s", response.Status)
+	}
+	return parseLatest(response.Body)
+}
+
+func parseLatest(reader io.Reader) (check.Result, error) {
+	content, err := io.ReadAll(reader)
+	if err != nil {
+		return check.Result{}, err
+	}
+	lines := make([]string, 0)
+	for _, line := range strings.Split(string(content), "\n") {
+		if line != "" && !strings.HasPrefix(line, "#") {
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) < 2 {
+		return check.Result{}, ErrNotFound
+	}
+	records, err := csv.NewReader(strings.NewReader(strings.Join(lines, "\n"))).ReadAll()
+	if err != nil || len(records) < 2 {
+		return check.Result{}, ErrNotFound
+	}
+	values := map[string]string{}
+	for index, column := range records[0] {
+		if index < len(records[1]) {
+			values[column] = records[1][index]
+		}
+	}
+	checkedAt, err := time.Parse(time.RFC3339Nano, values["_time"])
+	if err != nil {
+		return check.Result{}, err
+	}
+	available, err := strconv.ParseBool(values["available"])
+	if err != nil {
+		return check.Result{}, err
+	}
+	statusCode, _ := strconv.Atoi(values["status_code"])
+	responseTime, _ := strconv.ParseInt(values["response_time_ms"], 10, 64)
+	return check.Result{JobID: values["job_id"], ServiceID: values["service_id"], ServiceURL: values["service_url"], CheckedAt: checkedAt, Available: available, StatusCode: statusCode, ResponseTimeMS: responseTime, Error: values["error"]}, nil
 }
 
 func (influx *InfluxDB) writeOnce(ctx context.Context, result check.Result) (bool, error) {

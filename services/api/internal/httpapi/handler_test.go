@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/auth"
+	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/incident"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/monitoring"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/serviceconfig"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/user"
@@ -75,6 +76,17 @@ type stubConfigurationPublisher struct {
 	err    error
 }
 
+type stubIncidentRepository struct {
+	values    []incident.Incident
+	err       error
+	serviceID string
+}
+
+func (stub *stubIncidentRepository) ListByService(_ context.Context, serviceID string) ([]incident.Incident, error) {
+	stub.serviceID = serviceID
+	return stub.values, stub.err
+}
+
 func (stub *stubConfigurationPublisher) Publish(_ context.Context, update serviceconfig.Update) error {
 	stub.update = update
 	return stub.err
@@ -98,7 +110,7 @@ func newTestHandler(reader checkReader, authentication authentication) (http.Han
 	sessions := scs.New()
 	services := &stubServiceRepository{}
 	publisher := &stubConfigurationPublisher{}
-	return sessions.LoadAndSave(New(reader, authentication, sessions, services, publisher, testOrigin)), sessions, services, publisher
+	return sessions.LoadAndSave(New(reader, authentication, sessions, services, &stubIncidentRepository{}, publisher, testOrigin)), sessions, services, publisher
 }
 
 func authenticatedCookie(t *testing.T, sessions *scs.SessionManager, userID string) *http.Cookie {

@@ -56,6 +56,7 @@ async function mockDashboard(page, { services = [service], status = serviceStatu
     if (statusHandler) return statusHandler(route)
     return route.fulfill({ status: statusCode, contentType: 'application/json', body: JSON.stringify(status) })
   })
+  await page.route('**/api/services/*/incidents', (route) => route.fulfill({ contentType: 'application/json', body: '[]' }))
 }
 
 test('показывает форму входа неавторизованному пользователю', async ({ page }) => {
