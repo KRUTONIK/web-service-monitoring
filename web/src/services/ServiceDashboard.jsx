@@ -149,7 +149,9 @@ function MonitoringMetrics({ query }) {
   const metrics = query.data
   if (metrics.total_checks === 0) return <Card withBorder><Title order={3}>Показатели мониторинга</Title><Text c="dimmed">За выбранный период проверок не было.</Text></Card>
   const duration = metrics.downtime_seconds >= 60 ? `${Math.floor(metrics.downtime_seconds / 60)} мин ${metrics.downtime_seconds % 60} с` : `${metrics.downtime_seconds} с`
-  return <Card withBorder><Stack gap="sm"><Title order={3}>Показатели мониторинга</Title><SimpleGrid cols={{ base: 1, sm: 3 }}><Metric label="Успешные проверки" value={`${metrics.success_rate.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}%`} /><Metric label="Среднее время ответа" value={`${Math.round(metrics.average_response_ms)} мс`} /><Metric label="P95" value={`${metrics.p95_response_ms} мс`} /><Metric label="Инциденты" value={metrics.incident_count} /><Metric label="Время недоступности" value={duration} /></SimpleGrid></Stack></Card>
+  const responseValue = metrics.has_response_metrics ? `${Math.round(metrics.average_response_ms)} мс` : '—'
+  const p95Value = metrics.has_response_metrics ? `${metrics.p95_response_ms} мс` : '—'
+  return <Card withBorder><Stack gap="sm"><Title order={3}>Показатели мониторинга</Title><SimpleGrid cols={{ base: 1, sm: 3 }}><Metric label="Успешные проверки" value={`${metrics.success_rate.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}%`} /><Metric label="Среднее время ответа" value={responseValue} /><Metric label="P95" value={p95Value} /><Metric label="Инциденты" value={metrics.incident_count} /><Metric label="Время недоступности" value={duration} /></SimpleGrid></Stack></Card>
 }
 
 function CheckHistory({ chartQuery, query, period, page, pageSize, onPeriodChange, onPageChange, onPageSizeChange }) {
