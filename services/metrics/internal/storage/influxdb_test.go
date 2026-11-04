@@ -91,3 +91,20 @@ func TestSummaryQueryHasNoLimitForLargePeriods(t *testing.T) {
 		t.Fatalf("summary query must cover the full period without a page limit: %s", query)
 	}
 }
+
+func TestSummaryParsesAggregateResponses(t *testing.T) {
+	values := []string{"2", "1", "0", "0"}
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requestCount++
+		if requestCount > len(values) {
+			t.Fatal("unexpected aggregate query")
+		}
+		_, _ = io.WriteString(writer, "#datatype,string,long\n#group,false,false\n#default,_result,,\n,result,table,_value\n,,0,"+values[requestCount-1]+"\n")
+	}))
+	defer server.Close()
+	summary, err := NewInfluxDB(server.Client(), server.URL, "org", "bucket", "token").Summary(context.Background(), "service-1", time.Now().Add(-time.Hour))
+	if err != nil || summary.TotalChecks != 2 || summary.SuccessfulChecks != 1 || !summary.HasResponseMetrics || summary.AverageResponseMS != 0 || summary.P95ResponseMS != 0 || requestCount != 4 {
+		t.Fatalf("unexpected summary=%+v err=%v requests=%d", summary, err, requestCount)
+	}
+}

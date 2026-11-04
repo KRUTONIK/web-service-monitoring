@@ -154,7 +154,7 @@ func (influx *InfluxDB) scalar(ctx context.Context, query string) (float64, erro
 	if err != nil {
 		return 0, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("InfluxDB returned %s", response.Status)
 	}
