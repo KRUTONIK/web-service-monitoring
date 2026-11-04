@@ -7,11 +7,13 @@ import (
 )
 
 type Service struct {
-	ID        string    `json:"id"`
-	URL       string    `json:"url"`
-	Enabled   bool      `json:"enabled"`
-	Version   int64     `json:"version"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID              string    `json:"id"`
+	URL             string    `json:"url"`
+	Enabled         bool      `json:"enabled"`
+	IntervalSeconds int       `json:"interval_seconds"`
+	TimeoutSeconds  int       `json:"timeout_seconds"`
+	Version         int64     `json:"version"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type Snapshot struct {
@@ -52,6 +54,22 @@ func (state *State) Apply(service Service) bool {
 	}
 	state.services[service.ID] = service
 	return true
+}
+
+func (state *State) Reconcile(snapshot Snapshot) int {
+	state.mutex.Lock()
+	defer state.mutex.Unlock()
+
+	updated := 0
+	for _, service := range snapshot.Services {
+		current, exists := state.services[service.ID]
+		if exists && service.Version <= current.Version {
+			continue
+		}
+		state.services[service.ID] = service
+		updated++
+	}
+	return updated
 }
 
 func (state *State) EnabledServices() []Service {

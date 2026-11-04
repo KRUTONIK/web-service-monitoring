@@ -9,12 +9,13 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/KRUTONIK/web-service-monitoring/contracts/incidents"
 	"github.com/KRUTONIK/web-service-monitoring/contracts/jobs"
 	contractsmessaging "github.com/KRUTONIK/web-service-monitoring/contracts/messaging"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-// PermanentError marks a failure that must not be retried.
+// PermanentError обозначает ошибку, которую не следует повторять.
 type PermanentError struct{ err error }
 
 func (err *PermanentError) Error() string { return err.err.Error() }
@@ -44,6 +45,24 @@ func Open(rabbitMQURL string) (*Broker, error) {
 }
 
 func (broker *Broker) Close() error { return broker.connection.Close() }
+
+func (broker *Broker) PublishIncident(ctx context.Context, event incidents.Event) error {
+	body, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("encode incident event: %w", err)
+	}
+	channel, err := broker.connection.Channel()
+	if err != nil {
+		return fmt.Errorf("open incident channel: %w", err)
+	}
+	defer func() { _ = channel.Close() }()
+	// Очередь объявляет API Consumer. mandatory publication below distinguishes
+	// a temporarily absent queue through basic.return without changing it.
+	if err := publishConfirmed(ctx, channel, "", contractsmessaging.IncidentEventsQueue, amqp.Publishing{ContentType: "application/json", DeliveryMode: amqp.Persistent, Body: body}); err != nil {
+		return fmt.Errorf("publish incident event: %w", err)
+	}
+	return nil
+}
 
 func (broker *Broker) ConsumeJobs(ctx context.Context, handler func(jobs.CheckJob) error) error {
 	channel, err := broker.connection.Channel()
@@ -90,7 +109,7 @@ func (broker *Broker) processDelivery(ctx context.Context, channel *amqp.Channel
 		if errors.As(err, &permanent) || attempt >= contractsmessaging.MaxCheckJobAttempts {
 			return broker.moveToDLQ(ctx, channel, delivery, attempt, err.Error())
 		}
-		log.Printf("retry check job service=%s attempt=%d/%d error=%v", job.ServiceID, attempt, contractsmessaging.MaxCheckJobAttempts, err)
+		log.Printf("retry check job job_id=%s service=%s attempt=%d/%d error=%v", job.JobID, job.ServiceID, attempt, contractsmessaging.MaxCheckJobAttempts, err)
 		if err := broker.moveToRetryQueue(ctx, channel, delivery, attempt, err.Error()); err != nil {
 			return err
 		}
@@ -107,7 +126,7 @@ func (broker *Broker) moveToRetryQueue(ctx context.Context, channel *amqp.Channe
 	headers := cloneHeaders(delivery.Headers)
 	headers["x-retry-count"] = int32(attempt)
 	headers["x-last-error"] = reason
-	if err := channel.PublishWithContext(ctx, contractsmessaging.CheckRetryExchange, contractsmessaging.CheckRetryRoute, false, false, amqp.Publishing{
+	if err := broker.publishOnNewChannel(ctx, contractsmessaging.CheckRetryExchange, contractsmessaging.CheckRetryRoute, amqp.Publishing{
 		ContentType:  "application/json",
 		DeliveryMode: amqp.Persistent,
 		Headers:      headers,
@@ -126,7 +145,7 @@ func (broker *Broker) moveToDLQ(ctx context.Context, channel *amqp.Channel, deli
 	headers["x-final-error"] = reason
 	headers["x-attempts"] = int32(attempt)
 	headers["x-failed-at"] = time.Now().UTC().Format(time.RFC3339Nano)
-	if err := channel.PublishWithContext(ctx, "", contractsmessaging.CheckJobsDLQ, false, false, amqp.Publishing{
+	if err := broker.publishOnNewChannel(ctx, "", contractsmessaging.CheckJobsDLQ, amqp.Publishing{
 		ContentType:  "application/json",
 		DeliveryMode: amqp.Persistent,
 		Headers:      headers,
@@ -139,6 +158,58 @@ func (broker *Broker) moveToDLQ(ctx context.Context, channel *amqp.Channel, deli
 		return fmt.Errorf("acknowledge dead-lettered check job: %w", err)
 	}
 	return nil
+}
+
+// publishOnNewChannel keeps publisher-confirm listeners isolated from the
+// long-lived consumer channel. A failed publication therefore cannot leave a
+// stale NotifyPublish or NotifyReturn listener behind for the next delivery.
+func (broker *Broker) publishOnNewChannel(ctx context.Context, exchange string, key string, message amqp.Publishing) error {
+	channel, err := broker.connection.Channel()
+	if err != nil {
+		return fmt.Errorf("open publication channel: %w", err)
+	}
+	defer func() { _ = channel.Close() }()
+	return publishConfirmed(ctx, channel, exchange, key, message)
+}
+
+// publishConfirmed гарантирует, что сообщение маршрутизировано и принято
+// брокером до подтверждения исходного задания.
+func publishConfirmed(ctx context.Context, channel *amqp.Channel, exchange string, key string, message amqp.Publishing) error {
+	if err := channel.Confirm(false); err != nil {
+		return fmt.Errorf("enable publisher confirms: %w", err)
+	}
+	confirms := channel.NotifyPublish(make(chan amqp.Confirmation, 1))
+	returns := channel.NotifyReturn(make(chan amqp.Return, 1))
+	if err := channel.PublishWithContext(ctx, exchange, key, true, false, message); err != nil {
+		return err
+	}
+	for {
+		// RabbitMQ emits basic.return before basic.ack for an unroutable
+		// mandatory publication. Prefer the return so an ACK alone never
+		// makes an unroutable message look successful.
+		select {
+		case returned := <-returns:
+			return fmt.Errorf("message was not routed: %s", returned.ReplyText)
+		default:
+		}
+
+		select {
+		case returned := <-returns:
+			return fmt.Errorf("message was not routed: %s", returned.ReplyText)
+		case confirmation, ok := <-confirms:
+			if !ok || !confirmation.Ack {
+				return fmt.Errorf("publication was not confirmed")
+			}
+			select {
+			case returned := <-returns:
+				return fmt.Errorf("message was not routed: %s", returned.ReplyText)
+			default:
+			}
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 func (broker *Broker) declareQueue() error {

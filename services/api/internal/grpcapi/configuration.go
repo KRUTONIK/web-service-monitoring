@@ -11,7 +11,7 @@ import (
 )
 
 type configurationRepository interface {
-	List(context.Context) ([]serviceconfig.Service, error)
+	ListForScheduler(context.Context) ([]serviceconfig.Service, error)
 }
 
 type ConfigurationServer struct {
@@ -24,7 +24,7 @@ func NewConfigurationServer(repository configurationRepository) *ConfigurationSe
 }
 
 func (server *ConfigurationServer) GetSnapshot(ctx context.Context, _ *configurationv1.GetSnapshotRequest) (*configurationv1.GetSnapshotResponse, error) {
-	services, err := server.repository.List(ctx)
+	services, err := server.repository.ListForScheduler(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "failed to read configuration")
 	}
@@ -33,6 +33,7 @@ func (server *ConfigurationServer) GetSnapshot(ctx context.Context, _ *configura
 	for _, service := range services {
 		response.Services = append(response.Services, &configurationv1.Service{
 			Id: service.ID, Url: service.URL, Enabled: service.Enabled, Version: service.Version,
+			IntervalSeconds: int32(service.IntervalSeconds), TimeoutSeconds: int32(service.TimeoutSeconds),
 			UpdatedAt: timestamppb.New(service.UpdatedAt),
 		})
 	}

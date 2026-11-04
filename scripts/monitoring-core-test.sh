@@ -61,6 +61,23 @@ influx_job_count() {
     node -e 'const ids = process.argv[1].match(/\b[a-f0-9]{64}\b/g) ?? []; console.log(new Set(ids).size)' "$response"
 }
 
+influx_has_job() {
+    local job_id="$1"
+    local query
+    query="from(bucket: \"monitoring\")
+  |> range(start: -10m)
+  |> filter(fn: (r) => r._measurement == \"service_check\" and r.job_id == \"${job_id}\")
+  |> limit(n: 1)"
+    local response
+    response=$(curl --fail --silent \
+        --header "Authorization: Token monitoring-test-token" \
+        --header "Accept: application/csv" \
+        --header "Content-Type: application/vnd.flux" \
+        --data-binary "$query" \
+        "http://localhost:8086/api/v2/query?org=monitoring")
+    [[ "$response" == *"${job_id}"* ]]
+}
+
 wait_for_api() {
     for _ in {1..60}; do
         local api_id
@@ -72,7 +89,7 @@ wait_for_api() {
         fi
         sleep 1
     done
-    fail "API Service failed to become healthy"
+    fail "API Service не перешёл в работоспособное состояние"
 }
 
 wait_for_influxdb() {
@@ -82,7 +99,26 @@ wait_for_influxdb() {
         fi
         sleep 1
     done
-    fail "InfluxDB failed to become healthy"
+    fail "InfluxDB не перешёл в работоспособное состояние"
+}
+
+scheduler_sync_count() {
+    local scheduler_id
+    scheduler_id=$(service_id scheduler)
+    docker logs "$scheduler_id" 2>&1 | grep --count "reconciled configuration snapshot" || true
+}
+
+wait_for_scheduler_sync() {
+    local previous="$1"
+    for _ in {1..20}; do
+        local current
+        current=$(scheduler_sync_count)
+        if [ "$current" -gt "$previous" ]; then
+            return
+        fi
+        sleep 1
+    done
+    fail "Scheduler не применил периодический снимок конфигурации"
 }
 
 wait_for_job_count() {
@@ -100,7 +136,7 @@ wait_for_job_count() {
         fi
         sleep 1
     done
-    fail "Expected ${expected} jobs for ${service_id}"
+    fail "Для ${service_id} ожидалось не менее ${expected} заданий"
 }
 
 wait_for_queue_value() {
@@ -119,37 +155,65 @@ wait_for_queue_value() {
         fi
         sleep 1
     done
-    fail "Expected ${queue}.${field} to reach ${expected}"
+    fail "Значение ${queue}.${field} должно было достигнуть ${expected}"
 }
 
 wait_for_queue_redelivery() {
     local queue="$1"
+    local initial="$2"
     for _ in {1..40}; do
         local redeliveries
         if ! redeliveries=$(rabbit_queue_redeliveries "$queue"); then
             sleep 1
             continue
         fi
-        if [ "$redeliveries" -ge 1 ]; then
+        if [ "$redeliveries" -gt "$initial" ]; then
             return
         fi
         sleep 1
     done
-    fail "Expected ${queue} to redeliver an unacknowledged job"
+    fail "Очередь ${queue} должна была повторно доставить неподтверждённое задание"
+}
+
+wait_for_influx_job() {
+    local job_id="$1"
+    for _ in {1..40}; do
+        if influx_has_job "$job_id"; then
+            return
+        fi
+        sleep 1
+    done
+    fail "Результат задания ${job_id} не появился в InfluxDB"
+}
+
+wait_for_checkers_stopped() {
+    for _ in {1..20}; do
+        local running=0
+        for checker_id in $("${COMPOSE[@]}" ps -q checker); do
+            if [ "$(docker inspect --format='{{.State.Running}}' "$checker_id")" = "true" ]; then
+                running=1
+            fi
+        done
+        if [ "$running" = "0" ]; then
+            return
+        fi
+        sleep 1
+    done
+    fail "Checker автоматически перезапустился в тестовом окружении"
 }
 
 trap cleanup EXIT
 
-echo "Starting monitoring-core integration environment..."
+echo "Запуск интеграционного окружения ядра мониторинга..."
 "${COMPOSE[@]}" up --build -d --scale checker=2 >/dev/null 2>&1
 wait_for_api
 
-echo "Checking periodic scheduling..."
+echo "Проверка периодического планирования..."
 wait_for_job_count prototype-service 2 http://test-service
 
-echo "Checking multiple Checker workers..."
+echo "Проверка нескольких экземпляров Checker Service..."
 if [ "$("${COMPOSE[@]}" ps -q checker | wc -l | tr -d ' ')" != "2" ]; then
-    fail "Expected two Checker containers"
+    fail "Ожидались два контейнера Checker Service"
 fi
 wait_for_queue_value checker.jobs consumers 2
 "${COMPOSE[@]}" exec -T postgres psql -U monitoring -d monitoring -c "
@@ -161,12 +225,15 @@ wait_for_queue_value checker.jobs consumers 2
 wait_for_api
 wait_for_job_count slow-service 1 http://slow-test-service:8080
 for checker_id in $("${COMPOSE[@]}" ps -q checker); do
-    if ! docker logs "$checker_id" 2>&1 | grep --quiet "checked service="; then
-        fail "Checker ${checker_id} did not process a job"
+    if [ "$(docker inspect --format='{{.State.Running}}' "$checker_id")" != "true" ]; then
+        fail "Checker ${checker_id} завершился с ошибкой"
+    fi
+    if docker logs "$checker_id" 2>&1 | grep --extended-regexp --ignore-case --quiet "panic|fatal"; then
+        fail "Checker ${checker_id} сообщил о критической ошибке"
     fi
 done
 
-echo "Checking redelivery after Checker failure..."
+echo "Проверка повторной доставки после сбоя Checker Service..."
 "${COMPOSE[@]}" stop scheduler >/dev/null
 "${COMPOSE[@]}" stop checker >/dev/null
 for queue in checker.jobs checker.jobs.retry; do
@@ -175,6 +242,7 @@ for queue in checker.jobs checker.jobs.retry; do
 done
 "${COMPOSE[@]}" up -d --no-deps --scale checker=2 checker >/dev/null
 wait_for_queue_value checker.jobs consumers 2
+initial_redeliveries=$(rabbit_queue_redeliveries checker.jobs)
 redelivery_payload=$(node -e '
 process.stdout.write(JSON.stringify({
   job_id: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
@@ -196,13 +264,17 @@ routed=$(curl --fail --silent --user monitoring:monitoring \
     --header "Content-Type: application/json" \
     --data "$redelivery_request" \
     "http://localhost:15672/api/exchanges/%2F/amq.default/publish")
-node -e 'if (!JSON.parse(process.argv[1]).routed) process.exit(1)' "$routed" || fail "Redelivery test job was not routed"
+node -e 'if (!JSON.parse(process.argv[1]).routed) process.exit(1)' "$routed" || fail "Тестовое задание повторной доставки не было направлено в очередь"
 wait_for_queue_value checker.jobs messages_unacknowledged 1
 "${COMPOSE[@]}" kill checker >/dev/null
+wait_for_checkers_stopped
+wait_for_queue_value checker.jobs messages 1
 "${COMPOSE[@]}" up -d --no-deps --scale checker=2 checker >/dev/null
-wait_for_queue_redelivery checker.jobs
+wait_for_queue_value checker.jobs consumers 2
+wait_for_queue_redelivery checker.jobs "$initial_redeliveries"
+wait_for_influx_job cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
-echo "Checking DLQ after InfluxDB failure..."
+echo "Проверка DLQ после сбоя InfluxDB..."
 "${COMPOSE[@]}" stop checker >/dev/null
 for queue in checker.jobs checker.jobs.retry; do
     curl --fail --silent --request DELETE --user monitoring:monitoring \
@@ -232,20 +304,22 @@ routed=$(curl --fail --silent --user monitoring:monitoring \
     --header "Content-Type: application/json" \
     --data "$dlq_request" \
     "http://localhost:15672/api/exchanges/%2F/amq.default/publish")
-node -e 'if (!JSON.parse(process.argv[1]).routed) process.exit(1)' "$routed" || fail "DLQ test job was not routed"
+node -e 'if (!JSON.parse(process.argv[1]).routed) process.exit(1)' "$routed" || fail "Тестовое задание DLQ не было направлено в очередь"
 wait_for_queue_value checker.jobs.dlq messages 1 80
 "${COMPOSE[@]}" start influxdb >/dev/null
 wait_for_influxdb
+prototype_jobs_before_restart=$(influx_job_count prototype-service http://test-service)
 "${COMPOSE[@]}" start scheduler >/dev/null
+wait_for_job_count prototype-service "$((prototype_jobs_before_restart + 1))" http://test-service
 
-echo "Checking versioned configuration updates..."
+echo "Проверка версионных обновлений конфигурации..."
+sync_before=$(scheduler_sync_count)
 "${COMPOSE[@]}" exec -T postgres psql -U monitoring -d monitoring -c "
     UPDATE monitored_services
     SET url = 'http://updated-test-service', version = 2, updated_at = NOW()
     WHERE id = 'prototype-service';
 " >/dev/null
-"${COMPOSE[@]}" restart api >/dev/null
-wait_for_api
+wait_for_scheduler_sync "$sync_before"
 wait_for_job_count prototype-service 1 http://updated-test-service
 updated_before=$(influx_job_count prototype-service http://updated-test-service)
 stale_payload='{"event":"service.updated","service":{"id":"prototype-service","url":"http://test-service","enabled":true,"version":1,"updated_at":"2026-10-11T00:00:00Z"}}'
@@ -262,7 +336,21 @@ routed=$(curl --fail --silent --user monitoring:monitoring \
     --header "Content-Type: application/json" \
     --data "$rabbit_request" \
     "http://localhost:15672/api/exchanges/%2F/amq.default/publish")
-node -e 'if (!JSON.parse(process.argv[1]).routed) process.exit(1)' "$routed" || fail "Stale configuration message was not routed"
+node -e 'if (!JSON.parse(process.argv[1]).routed) process.exit(1)' "$routed" || fail "Устаревшее сообщение конфигурации не было направлено в очередь"
 wait_for_job_count prototype-service "$((updated_before + 1))" http://updated-test-service
 
-echo "Monitoring-core integration tests passed."
+echo "Проверка отключения мягко удалённого сервиса через снимок..."
+sync_before=$(scheduler_sync_count)
+"${COMPOSE[@]}" exec -T postgres psql -U monitoring -d monitoring -c "
+    UPDATE monitored_services
+    SET enabled = FALSE, deleted_at = NOW(), version = 3, updated_at = NOW()
+    WHERE id = 'prototype-service';
+" >/dev/null
+wait_for_scheduler_sync "$sync_before"
+if "${COMPOSE[@]}" logs scheduler 2>&1 | grep --quiet "reconciled configuration snapshot: 1 updates"; then
+    :
+else
+    fail "Scheduler не применил отключение мягко удалённого сервиса"
+fi
+
+echo "Интеграционные тесты ядра мониторинга успешно пройдены."

@@ -1,101 +1,118 @@
-# Web Service Monitoring
+# Мониторинг веб-сервисов
 
-Microservice-based system for monitoring web-service availability and performance.
+Микросервисная система для пользовательского мониторинга доступности и времени
+ответа веб-сервисов. Текущая версия — `v0.4.0`.
 
-## Current status
+## Возможности
 
-The project is at the monitoring-core stage (`v0.3.1` in development). It
-periodically checks configured web services, stores idempotent results in
-InfluxDB and exposes the latest result through the API and Web UI. Failed jobs
-are retried with a delay and then retained in a RabbitMQ dead-letter queue.
+- регистрация и аутентификация пользователей по сессионной cookie;
+- создание, изменение, включение, отключение и мягкое удаление собственных
+  веб-сервисов;
+- индивидуальные интервалы проверок и HTTP-тайм-ауты;
+- отображение доступности сервиса: «Доступен», «Недоступен», «Нет актуальных
+  данных» и «Мониторинг отключён»;
+- хранение последних проверок в InfluxDB;
+- фиксация начала сбоев, восстановления и истории инцидентов;
+- повторная обработка заданий и сообщений RabbitMQ без дублирования
+  результатов или инцидентов.
 
-## Quick start
+## Архитектура
 
-Requirements:
+- **Web UI** предоставляет регистрацию, управление сервисами, их состоянием и
+  историей инцидентов; работает с API по REST.
+- **API Service** хранит пользователей, конфигурации и инциденты в PostgreSQL,
+  предоставляет REST API, получает метрики от Metrics Service по gRPC и
+  обрабатывает события инцидентов RabbitMQ.
+- **Scheduler Service** получает конфигурацию API по gRPC, применяет быстрые
+  обновления из RabbitMQ и создаёт задания только для включённых сервисов.
+- **Checker Service** выполняет HTTP-проверки, записывает результаты в
+  InfluxDB и публикует события начала сбоя или восстановления.
+- **Metrics Service** читает результаты InfluxDB и предоставляет их API по
+  gRPC.
+- **Notification Service** остаётся заготовкой для будущей доставки
+  уведомлений.
 
-- Docker with Docker Compose
+PostgreSQL является источником истины для пользователей, настроек и
+инцидентов; InfluxDB хранит результаты проверок. RabbitMQ передаёт задания,
+изменения конфигурации и события. API Service не обращается к InfluxDB
+напрямую.
 
-Start the complete prototype from the repository root:
+## Технологии
+
+Go, React, Vite, TanStack Query, PostgreSQL, InfluxDB, RabbitMQ, gRPC, Docker
+Compose и GitHub Actions.
+
+## Запуск через Docker Compose
+
+Нужны Docker и Docker Compose. В корне репозитория:
 
 ```bash
-docker compose up --build
+docker compose up --build -d
 ```
 
-Open:
+После запуска откройте Web UI и зарегистрируйте пользователя. Затем создайте
+сервис в интерфейсе и задайте его URL, интервал и тайм-аут проверки.
 
-- Web UI: http://localhost:5173
-- API health check: http://localhost:8080/health
-- latest check result: http://localhost:8080/api/checks/latest
+Основные адреса:
 
-Scheduler Service creates checks automatically. Checker Service remains running
-as a worker and receives jobs through RabbitMQ. A successful job is
-acknowledged only after its result is saved.
+- Web UI: <http://localhost:5173>
+- REST API: <http://localhost:8080>
+- проверка готовности API: <http://localhost:8080/health>
+- RabbitMQ Management: <http://localhost:15672> (`monitoring` / `monitoring`)
+- InfluxDB: <http://localhost:8086>
 
-Additional Checker workers can be started when needed:
-
-```bash
-docker compose up --scale checker=2
-```
-
-Stop the prototype while preserving stored data:
+Остановить сервисы, сохранив данные:
 
 ```bash
 docker compose down
 ```
 
-See [Prototype documentation](docs/prototype.md) for configuration, verification
-and current limitations.
+Удалить также локальные данные:
 
-## Architecture
+```bash
+docker compose down -v
+```
 
-The system consists of:
+### Несколько Checker
 
-- Web UI — React
-- API Service — Go
-- Scheduler Service — Go
-- Checker Service — Go
-- Metrics Service — Go
-- Notification Service — Go
-- PostgreSQL — configuration and incidents
-- InfluxDB — monitoring results
-- RabbitMQ — asynchronous events between microservices
-- gRPC — synchronous internal requests
+Checker работают как конкурирующие потребители одной очереди. Для запуска двух
+экземпляров:
 
-API Service owns configuration in PostgreSQL. Scheduler Service requests its
-startup configuration from API over gRPC, receives later configuration updates
-through RabbitMQ and sends check jobs to Checker workers. Checker Service writes
-monitoring results to InfluxDB, while Metrics Service provides read access to
-them. API reads metrics from Metrics Service over gRPC.
+```bash
+docker compose up --scale checker=2
+```
 
-Check jobs are processed with at-least-once delivery. A stable `job_id` makes
-InfluxDB writes idempotent. Temporary failures travel through a delayed retry
-queue; malformed jobs and jobs that exhaust retries are moved to the DLQ. The
-Scheduler uses publisher confirms, so an overflow or routing failure is logged
-instead of silently losing a job.
-API Service has no direct access to InfluxDB. Docker initialization creates a
-single InfluxDB token for the prototype. Separate read and write credentials
-are deferred until the production-hardening stage.
+## Проверки и тесты
 
-## Project structure
+GitHub Actions выполняет проверку сообщений коммитов, Go-тесты, `go vet`,
+golangci-lint, ESLint, production build, Playwright и Docker Compose
+интеграционные сценарии.
 
-- `services/api` — API Service
-- `services/scheduler` — Scheduler Service
-- `services/checker` — Checker Service
-- `services/metrics` — Metrics Service
-- `services/notification` — Notification Service
-- `contracts` — versioned Protocol Buffers contracts and generated Go code
-- `web` — React Web UI
-- `deploy` — deployment configuration
-- `docs` — project documentation
-- `scripts` — utility scripts
-- `metrics` — quality metrics
+Локальные интеграционные сценарии:
 
-## Versions
+```bash
+bash scripts/integration-test.sh
+bash scripts/prototype-test.sh
+bash scripts/monitoring-core-test.sh
+bash scripts/incident-redelivery-test.sh
+bash scripts/incident-queue-compatibility-test.sh
+```
 
-- `v0.1.0` — infrastructure
-- `v0.2.0` — prototype
-- `v0.3.0` — monitoring core
-- `v0.3.1` — monitoring core reliability fixes
-- `v0.4.0` — management and state tracking
-- `v0.5.0` — analytics and notifications
-- `v1.0.0` — final release
+Web-проверки запускаются из каталога `web`:
+
+```bash
+npm run lint
+npm run build
+npm run test:e2e
+```
+
+Подробности о тестировании приведены в
+[документации по тестированию](docs/testing.md). Известные предупреждения
+зависимостей описаны в [техническом долге](docs/dependency-audit.md).
+
+## Ограничения
+
+Текущая версия отображает последнюю проверку и историю инцидентов, но не
+содержит графиков и полной истории метрик в интерфейсе. Notification Service
+ещё не доставляет пользовательские уведомления. Для прототипной среды InfluxDB
+использует общий токен вместо разделённых прав чтения и записи.

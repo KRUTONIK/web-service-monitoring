@@ -33,7 +33,7 @@ func New(client *http.Client) *Checker {
 	return &Checker{client: client}
 }
 
-func (checker *Checker) Run(ctx context.Context, serviceID string, serviceURL string) Result {
+func (checker *Checker) Run(ctx context.Context, serviceID string, serviceURL string, timeout time.Duration) Result {
 	result := Result{
 		ServiceID:  serviceID,
 		ServiceURL: serviceURL,
@@ -44,7 +44,12 @@ func (checker *Checker) Run(ctx context.Context, serviceID string, serviceURL st
 		return result
 	}
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, serviceURL, nil)
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	requestContext, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	request, err := http.NewRequestWithContext(requestContext, http.MethodGet, serviceURL, nil)
 	if err != nil {
 		result.Error = err.Error()
 		return result

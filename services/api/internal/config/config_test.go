@@ -12,6 +12,8 @@ func TestLoadConfiguredValues(t *testing.T) {
 	t.Setenv("POSTGRES_DSN", "postgres://test")
 	t.Setenv("PROTOTYPE_SERVICE_URL", "https://configured.test")
 	t.Setenv("RABBITMQ_URL", "amqp://rabbitmq.test")
+	t.Setenv("WEB_ORIGIN", "https://monitoring.test")
+	t.Setenv("API_COOKIE_SECURE", "true")
 
 	cfg := Load()
 
@@ -33,6 +35,9 @@ func TestLoadConfiguredValues(t *testing.T) {
 	if cfg.RabbitMQURL != "amqp://rabbitmq.test" {
 		t.Fatalf("unexpected RabbitMQ URL: %s", cfg.RabbitMQURL)
 	}
+	if cfg.WebOrigin != "https://monitoring.test" || !cfg.CookieSecure {
+		t.Fatalf("unexpected web configuration: %+v", cfg)
+	}
 }
 
 func TestLoadDefaultValues(t *testing.T) {
@@ -42,6 +47,8 @@ func TestLoadDefaultValues(t *testing.T) {
 	t.Setenv("POSTGRES_DSN", "")
 	t.Setenv("PROTOTYPE_SERVICE_URL", "")
 	t.Setenv("RABBITMQ_URL", "")
+	t.Setenv("WEB_ORIGIN", "")
+	t.Setenv("API_COOKIE_SECURE", "not-a-boolean")
 
 	cfg := Load()
 
@@ -59,5 +66,8 @@ func TestLoadDefaultValues(t *testing.T) {
 	}
 	if cfg.RabbitMQURL != "amqp://monitoring:monitoring@localhost:5672/" {
 		t.Fatalf("unexpected default RabbitMQ URL: %s", cfg.RabbitMQURL)
+	}
+	if cfg.WebOrigin != "http://localhost:5173" || cfg.CookieSecure {
+		t.Fatalf("unexpected web configuration: %+v", cfg)
 	}
 }

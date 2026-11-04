@@ -17,7 +17,7 @@ func TestRunAvailable(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result := New(server.Client()).Run(context.Background(), "service-1", server.URL)
+	result := New(server.Client()).Run(context.Background(), "service-1", server.URL, time.Second)
 
 	if !result.Available {
 		t.Fatal("expected service to be available")
@@ -48,7 +48,7 @@ func TestRunUnavailableStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result := New(server.Client()).Run(context.Background(), "service-1", server.URL)
+	result := New(server.Client()).Run(context.Background(), "service-1", server.URL, time.Second)
 
 	if result.Available {
 		t.Fatal("expected service to be unavailable")
@@ -68,9 +68,7 @@ func TestRunTimeout(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := server.Client()
-	client.Timeout = 10 * time.Millisecond
-	result := New(client).Run(context.Background(), "service-1", server.URL)
+	result := New(server.Client()).Run(context.Background(), "service-1", server.URL, 10*time.Millisecond)
 
 	if result.Available {
 		t.Fatal("expected timed out service to be unavailable")
@@ -84,7 +82,7 @@ func TestRunTimeout(t *testing.T) {
 }
 
 func TestRunInvalidAddress(t *testing.T) {
-	result := New(&http.Client{}).Run(context.Background(), "service-1", "://invalid")
+	result := New(&http.Client{}).Run(context.Background(), "service-1", "://invalid", time.Second)
 
 	if result.Available {
 		t.Fatal("expected invalid address to be unavailable")
@@ -104,7 +102,7 @@ func TestRunNetworkError(t *testing.T) {
 		t.Fatalf("close local listener: %v", err)
 	}
 
-	result := New(&http.Client{Timeout: time.Second}).Run(context.Background(), "service-1", "http://"+address)
+	result := New(&http.Client{}).Run(context.Background(), "service-1", "http://"+address, time.Second)
 
 	if result.Available {
 		t.Fatal("expected unavailable service after network error")
@@ -118,7 +116,7 @@ func TestRunNetworkError(t *testing.T) {
 }
 
 func TestRunRejectsUnsupportedScheme(t *testing.T) {
-	result := New(&http.Client{}).Run(context.Background(), "service-1", "ftp://example.com/file")
+	result := New(&http.Client{}).Run(context.Background(), "service-1", "ftp://example.com/file", time.Second)
 
 	if result.Available {
 		t.Fatal("expected unsupported scheme to be unavailable")
@@ -129,7 +127,7 @@ func TestRunRejectsUnsupportedScheme(t *testing.T) {
 }
 
 func TestRunRejectsAddressWithoutHost(t *testing.T) {
-	result := New(&http.Client{}).Run(context.Background(), "service-1", "http:")
+	result := New(&http.Client{}).Run(context.Background(), "service-1", "http:", time.Second)
 
 	if result.Available {
 		t.Fatal("expected address without host to be unavailable")
@@ -140,7 +138,7 @@ func TestRunRejectsAddressWithoutHost(t *testing.T) {
 }
 
 func TestRunRejectsMissingServiceID(t *testing.T) {
-	result := New(&http.Client{}).Run(context.Background(), "", "https://service.test")
+	result := New(&http.Client{}).Run(context.Background(), "", "https://service.test", time.Second)
 
 	if result.Available {
 		t.Fatal("expected result without service ID to be unavailable")

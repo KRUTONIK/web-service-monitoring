@@ -1,222 +1,219 @@
-# Monitoring Core
+# Ядро мониторинга
 
-## Purpose
+## Назначение
 
-The monitoring core validates the end-to-end scenario and the selected
-technology stack for periodic checks of configured web services.
+Текущая версия подтверждает сквозной сценарий и выбранный стек технологий для
+периодической проверки настроенных веб-сервисов.
 
-The scenario is:
+Сценарий работы:
 
-1. API Service stores one service configuration in PostgreSQL.
-2. On startup, Scheduler Service requests the configuration snapshot from API
-   Service through gRPC.
-3. Scheduler Service sends check jobs through RabbitMQ at the configured
-   interval.
-4. Checker Service sends an HTTP request to the configured URL, measures the
-   response time and determines availability.
-5. Checker Service writes the result to InfluxDB.
-6. Web UI requests the latest result from API Service over REST.
-7. API Service requests the result from Metrics Service through gRPC.
-8. Metrics Service reads the result from InfluxDB.
-9. API Service returns the result to Web UI.
+1. API Service хранит начальную конфигурацию одного сервиса в PostgreSQL.
+2. При запуске Scheduler Service получает снимок конфигурации от API Service
+   по gRPC.
+3. Scheduler Service публикует задания проверок в RabbitMQ с заданным
+   интервалом.
+4. Checker Service выполняет HTTP-запрос, измеряет время ответа и определяет
+   доступность.
+5. Checker Service сохраняет результат в InfluxDB.
+6. Web UI запрашивает последнюю проверку у API Service по REST.
+7. API Service запрашивает результат у Metrics Service по gRPC.
+8. Metrics Service читает результат из InfluxDB.
+9. API Service возвращает результат в Web UI.
 
 ```text
 Web UI --REST--> API Service --SQL--> PostgreSQL
                     |
-                    +--gRPC--> Metrics Service --read--> InfluxDB
+                    +--gRPC--> Metrics Service --чтение--> InfluxDB
                     |
-                    +--events--> RabbitMQ --> Scheduler Service --> RabbitMQ --> Checker workers
+                    +--события--> RabbitMQ --> Scheduler Service --> RabbitMQ --> Checker
 
-Checker Service --write-------------> InfluxDB
+Checker Service --запись-----------------------------------------------> InfluxDB
 ```
 
-API Service does not access InfluxDB directly. Checker Service does not access
-PostgreSQL or read monitoring results. Metrics Service has read-only
-responsibility for monitoring data. Notification Service remains outside this
-prototype scenario.
+API Service не обращается к InfluxDB напрямую. Checker Service не работает с
+PostgreSQL и не читает результаты мониторинга. Metrics Service отвечает только
+за чтение данных мониторинга. Notification Service пока не участвует в этом
+сценарии.
 
-## Implemented behavior
+## Реализованное поведение
 
-Checker Service records:
+Checker Service сохраняет:
 
-- service URL;
-- UTC check time;
-- availability;
-- HTTP status code;
-- response time in milliseconds;
-- transport error, when present.
+- URL сервиса;
+- время проверки в UTC;
+- доступность;
+- HTTP-код ответа;
+- время ответа в миллисекундах;
+- ошибку транспорта, если она возникла.
 
-HTTP responses from `200` through `299` are treated as available. Network
-errors, timeouts and other response codes are treated as unavailable.
+Доступными считаются ответы HTTP с кодом от `200` до `299`. Сетевые ошибки,
+тайм-ауты и остальные коды означают недоступность.
 
-Scheduler Service receives a configuration snapshot first and then consumes
-durable configuration-update messages. It ignores stale versions and schedules
-enabled services at `SCHEDULER_INTERVAL`. Jobs are sent to a durable shared
-queue; several Checker instances can consume it as competing consumers.
-Checker acknowledges a job only after the result has been stored. The job queue
-is bounded by length and lifetime to prevent stale tasks from accumulating.
+Сначала Scheduler Service получает снимок конфигурации, затем читает надёжные
+сообщения её обновлений. Он игнорирует устаревшие версии и планирует проверку
+включённых сервисов с периодом `SCHEDULER_INTERVAL`. Задания отправляются в
+общую надёжную очередь; несколько экземпляров Checker получают их как
+конкурирующие потребители. Checker подтверждает задание только после успешного
+сохранения результата. Длина и время жизни основной очереди ограничены, чтобы
+не накапливались устаревшие задания.
 
-## Reliable job delivery
+## Надёжная доставка заданий
 
-RabbitMQ provides at-least-once delivery, therefore a Checker can receive the
-same job more than once. Scheduler creates a stable `job_id` from the service,
-URL and scheduled check time. Checker keeps that identifier and writes it as an
-InfluxDB tag with the scheduled timestamp. A repeated delivery overwrites the
-same InfluxDB point instead of creating another measurement.
+RabbitMQ обеспечивает доставку «как минимум один раз», поэтому Checker может
+получить одно задание повторно. Scheduler формирует стабильный `job_id` из
+сервиса, URL и времени планирования. Checker сохраняет идентификатор как тег
+InfluxDB и использует запланированное время. Повторная доставка перезаписывает
+ту же точку InfluxDB, а не создаёт ещё один результат.
 
 ```text
 Scheduler --publisher confirm--> checker.jobs --> Checker
                                         |          |
-                              reject-publish       +-- success: write InfluxDB, ACK
-                              when full            |
-                                                   +-- temporary failure
+                              reject-publish       +-- успех: запись InfluxDB, ACK
+                              при заполнении       |
+                                                   +-- временная ошибка
                                                         |
                                                         v
                                              checker.retry exchange
                                                         |
                                                         v
-                                         checker.jobs.retry (delay)
+                                         checker.jobs.retry (задержка)
                                                         |
                                                         v
                                                    checker.jobs
 
-malformed job or exhausted attempts -----------------> checker.jobs.dlq
+некорректное задание или исчерпанные попытки ------> checker.jobs.dlq
 ```
 
-`checker.jobs` is durable, keeps at most 1000 tasks and uses
-`reject-publish`, so queue overflow is returned to Scheduler rather than
-silently dropping an older task. Scheduler waits for a RabbitMQ publisher
-confirm and logs an unrecoverable publication failure with the service and job
-identifiers.
+Очередь `checker.jobs` надёжная, содержит не более 1000 заданий и использует
+`reject-publish`. При переполнении RabbitMQ возвращает ошибку Scheduler вместо
+того, чтобы незаметно удалить старое задание. Scheduler ожидает publisher
+confirm и записывает в журнал необрабатываемую ошибку публикации с
+идентификаторами сервиса и задания.
 
-Checker classifies malformed jobs as permanent failures. Other processing
-errors are temporary: they are published to the delayed retry queue with the
-attempt number and error description in headers. After three attempts, Checker
-publishes the unchanged job body to `checker.jobs.dlq`, adds final-error
-metadata and acknowledges the source delivery. The retry delay is configured by
-`CHECKER_JOB_RETRY_DELAY`; the main queue TTL is configured separately with
-`CHECKER_JOB_TTL` and is never shorter than the full retry window.
+Checker считает некорректные задания постоянной ошибкой. Остальные ошибки
+обработки временные: задание отправляется в очередь отложенного повтора с
+номером попытки и описанием ошибки в заголовках. После трёх попыток Checker
+отправляет неизменённое тело задания в `checker.jobs.dlq`, добавляет сведения
+об окончательной ошибке и подтверждает исходную доставку. Задержку задаёт
+`CHECKER_JOB_RETRY_DELAY`; TTL основной очереди задаётся отдельно через
+`CHECKER_JOB_TTL` и не может быть меньше полного окна повторных попыток.
 
-Each configuration has a monotonically increasing `version`. Scheduler Service
-first replaces its local state with the startup snapshot and then consumes
-queued updates. An update whose version is not greater than the snapshot or
-current local version is acknowledged and ignored. This prevents an older
-queued message from rolling back a newer startup snapshot.
+Каждая конфигурация имеет монотонно растущий `version`. Scheduler Service
+сначала заменяет локальное состояние снимком при запуске, затем читает
+накопленные обновления. Обновление с версией не выше текущей подтверждается и
+игнорируется: старое сообщение не может откатить новую конфигурацию.
 
-Synchronous internal requests use gRPC:
+Синхронные внутренние запросы выполняются по gRPC:
 
-- Scheduler Service calls `ConfigurationService.GetSnapshot` on API Service;
-- API Service calls `MetricsService.GetLatestCheck` on Metrics Service.
+- Scheduler Service вызывает `ConfigurationService.GetSnapshot` в API Service;
+- API Service вызывает `MetricsService.GetLatestCheck` в Metrics Service.
 
-RabbitMQ is used for asynchronous configuration-update events and check jobs.
-It is not used as an RPC transport.
+RabbitMQ используется для асинхронных обновлений конфигурации и заданий
+проверок, но не как транспорт RPC.
 
-API Service provides:
+API Service предоставляет:
 
-| Method | Path | Result |
+| Метод | Путь | Результат |
 |---|---|---|
-| `GET` | `/health` | API process readiness |
-| `GET` | `/api/checks/latest` | Latest result stored during the previous 24 hours |
+| `GET` | `/health` | готовность процесса API |
+| `GET` | `/api/checks/latest` | последняя проверка за предыдущие 24 часа |
 
-Web UI shows the service URL, current availability, HTTP status code, response
-time and check time. The user can request the latest stored result again with
-the refresh button.
+Web UI показывает URL, доступность, HTTP-код, время ответа и время проверки;
+кнопка обновления повторно запрашивает последнюю сохранённую проверку.
 
-## Configuration
+## Конфигурация
 
-| Variable | Service | Default |
+| Переменная | Сервис | Значение по умолчанию |
 |---|---|---|
 | `API_LISTEN_ADDRESS` | API | `:8080` |
 | `API_GRPC_LISTEN_ADDRESS` | API | `:9091` |
 | `METRICS_GRPC_ADDRESS` | API | `localhost:9092` |
-| `POSTGRES_DSN` | API | local monitoring database |
-| `PROTOTYPE_SERVICE_URL` | API | `http://test-service` in Compose |
+| `POSTGRES_DSN` | API | локальная база мониторинга |
+| `PROTOTYPE_SERVICE_URL` | API | `http://test-service` в Compose |
 | `API_GRPC_ADDRESS` | Scheduler | `localhost:9091` |
 | `SCHEDULER_INTERVAL` | Scheduler | `1m` |
 | `CHECKER_JOB_RETRY_DELAY` | Scheduler | `5s` |
 | `CHECKER_JOB_TTL` | Scheduler | `1m` |
-| `RABBITMQ_URL` | API, Scheduler, Checker | local monitoring broker |
+| `RABBITMQ_URL` | API, Scheduler, Checker | локальный брокер |
 | `METRICS_GRPC_LISTEN_ADDRESS` | Metrics | `:9092` |
 | `INFLUXDB_URL` | Checker, Metrics | `http://localhost:8086` |
 | `INFLUXDB_ORG` | Checker, Metrics | `monitoring` |
 | `INFLUXDB_BUCKET` | Checker, Metrics | `monitoring` |
 | `INFLUXDB_TOKEN` | Checker, Metrics | `monitoring-test-token` |
-| `VITE_API_URL` | Web build | `http://localhost:8080` |
+| `VITE_API_URL` | сборка Web UI | `http://localhost:8080` |
 
-Compose replaces database, broker and gRPC addresses with their internal
-service names. Checker and Metrics Service use the common development token
-created by InfluxDB initialization. Separate write-only and read-only tokens
-are intentionally left for a later security-hardening stage; they are not
-required to demonstrate the prototype's vertical scenario.
+Docker Compose заменяет адреса базы, брокера и gRPC на внутренние имена
+сервисов. Checker и Metrics Service используют общий токен разработки,
+созданный при инициализации InfluxDB. Отдельные токены только для записи и
+чтения намеренно отложены до этапа усиления безопасности.
 
-## Running with Docker
+## Запуск через Docker Compose
 
-Build and start all components:
+Собрать и запустить все компоненты:
 
 ```bash
 docker compose up --build
 ```
 
-Scheduler and Checker Service should remain in the `running` state so checks
-can be published and consumed automatically.
+Scheduler и Checker должны находиться в состоянии `running`, чтобы задания
+публиковались и обрабатывались автоматически.
 
-Several Checker workers can share the same job queue:
+Несколько Checker могут использовать одну очередь:
 
 ```bash
 docker compose up --scale checker=2
 ```
 
-Inspect the result:
+Получить последнюю проверку:
 
 ```bash
 curl http://localhost:8080/api/checks/latest
 ```
 
-Stop all services and preserve InfluxDB data:
+Остановить сервисы с сохранением данных InfluxDB:
 
 ```bash
 docker compose down
 ```
 
-Remove containers and stored prototype data:
+Удалить контейнеры и данные прототипа:
 
 ```bash
 docker compose down -v
 ```
 
-## Automated verification
+## Автоматические проверки
 
-Unit tests cover the HTTP checker, versioned configuration state, gRPC service
-adapters, environment configuration, InfluxDB write and query clients, CSV
-response parsing and API handlers.
+Unit-тесты проверяют HTTP Checker, версионное состояние конфигурации, gRPC
+адаптеры, конфигурацию окружения, клиентов записи и чтения InfluxDB, разбор CSV
+и обработчики API.
 
-The basic prototype integration test runs through Docker Compose:
+Базовая интеграционная проверка прототипа запускается через Docker Compose:
 
 ```bash
 bash scripts/prototype-test.sh
 ```
 
-The test builds the images, waits for API, Checker and Metrics Service, polls
-until a monitoring result is available, validates the returned JSON and checks
-that the Web UI is available.
+Она собирает образы, ожидает API, Checker и Metrics Service, получает результат
+мониторинга, проверяет JSON-ответ и доступность Web UI.
 
-The monitoring-core integration test additionally verifies periodic scheduling,
-two competing Checker workers, redelivery after a worker failure, retry and
-DLQ processing while InfluxDB is unavailable, and versioned configuration
-updates:
+Проверка ядра мониторинга дополнительно проверяет периодическое планирование,
+двух конкурирующих Checker, повторную доставку после отказа воркера, повторные
+попытки и DLQ при недоступном InfluxDB, а также версионные обновления
+конфигурации:
 
 ```bash
 bash scripts/monitoring-core-test.sh
 ```
 
-CI runs both integration scenarios after the infrastructure checks.
+CI запускает оба сценария после инфраструктурной проверки.
 
-## Prototype limitations
+## Ограничения текущей версии
 
-- only one URL is seeded through the environment;
-- one global monitoring interval is used; per-service intervals are deferred;
-- only the latest result is available through the API;
-- there is no service-management interface;
-- incidents, analytics and notifications are not implemented;
-- authentication and production secret management are outside the current
-  scope.
+- через окружение задаётся только один начальный URL;
+- используется один общий интервал мониторинга, без индивидуальных интервалов;
+- REST API возвращает только последнюю проверку;
+- нет интерфейса управления сервисами;
+- инциденты, аналитика и уведомления не реализованы;
+- аутентификация и управление секретами для production не входят в текущий
+  объём.

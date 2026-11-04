@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -13,6 +14,7 @@ const (
 	defaultPostgresDSN   = "postgres://monitoring:monitoring@localhost:5432/monitoring?sslmode=disable"
 	defaultServiceURL    = "https://example.com"
 	defaultRabbitMQURL   = "amqp://monitoring:monitoring@localhost:5672/"
+	defaultWebOrigin     = "http://localhost:5173"
 )
 
 type Config struct {
@@ -23,6 +25,8 @@ type Config struct {
 	PostgresDSN    string
 	ServiceURL     string
 	RabbitMQURL    string
+	WebOrigin      string
+	CookieSecure   bool
 }
 
 func Load() Config {
@@ -34,7 +38,23 @@ func Load() Config {
 		PostgresDSN:    valueOrDefault("POSTGRES_DSN", defaultPostgresDSN),
 		ServiceURL:     valueOrDefault("PROTOTYPE_SERVICE_URL", defaultServiceURL),
 		RabbitMQURL:    valueOrDefault("RABBITMQ_URL", defaultRabbitMQURL),
+		WebOrigin:      valueOrDefault("WEB_ORIGIN", defaultWebOrigin),
+		CookieSecure:   boolValue("API_COOKIE_SECURE", false),
 	}
+}
+
+func boolValue(name string, fallback bool) bool {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+
+	return parsed
 }
 
 func valueOrDefault(name string, fallback string) string {

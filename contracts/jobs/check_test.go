@@ -7,8 +7,8 @@ import (
 
 func TestNewCheckJobUsesStableID(t *testing.T) {
 	scheduledAt := time.Date(2026, time.October, 11, 12, 0, 0, 0, time.FixedZone("UTC+4", 4*60*60))
-	first := NewCheckJob("service-1", "https://service.test", scheduledAt)
-	second := NewCheckJob("service-1", "https://service.test", scheduledAt.UTC())
+	first := NewCheckJob("service-1", "https://service.test", 5, scheduledAt)
+	second := NewCheckJob("service-1", "https://service.test", 5, scheduledAt.UTC())
 	if first.JobID == "" || first.JobID != second.JobID {
 		t.Fatalf("job IDs must be stable: %q and %q", first.JobID, second.JobID)
 	}
@@ -18,8 +18,8 @@ func TestNewCheckJobUsesStableID(t *testing.T) {
 }
 
 func TestNewCheckJobChangesIDForAnotherSchedule(t *testing.T) {
-	first := NewCheckJob("service-1", "https://service.test", time.Unix(1, 0))
-	second := NewCheckJob("service-1", "https://service.test", time.Unix(2, 0))
+	first := NewCheckJob("service-1", "https://service.test", 5, time.Unix(1, 0))
+	second := NewCheckJob("service-1", "https://service.test", 5, time.Unix(2, 0))
 	if first.JobID == second.JobID {
 		t.Fatal("different scheduled checks must have different IDs")
 	}
