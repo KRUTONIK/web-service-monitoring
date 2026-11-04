@@ -111,9 +111,10 @@ func (handler *handler) checkHistory(writer http.ResponseWriter, request *http.R
 	}
 	aggregateWindow := time.Duration(0)
 	if chart {
-		if period == "7d" {
+		switch period {
+		case "7d":
 			aggregateWindow = 15 * time.Minute
-		} else if period == "30d" {
+		case "30d":
 			aggregateWindow = time.Hour
 		}
 	}
