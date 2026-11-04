@@ -314,6 +314,12 @@ jobs:
         shell: bash
         run: bash scripts/monitoring-core-test.sh
 
+      - name: Run incident RabbitMQ integration tests
+        shell: bash
+        run: |
+          bash scripts/incident-redelivery-test.sh
+          bash scripts/incident-queue-compatibility-test.sh
+
   build:
     name: Build application
     runs-on: ubuntu-latest
