@@ -22,7 +22,7 @@ import (
 
 type checkReader interface {
 	Latest(context.Context, string) (monitoring.Result, error)
-	History(context.Context, string, time.Time, int, int) (monitoring.History, error)
+	History(context.Context, string, time.Time, int, int, time.Duration) (monitoring.History, error)
 }
 
 type authentication interface {
@@ -99,12 +99,27 @@ func (handler *handler) checkHistory(writer http.ResponseWriter, request *http.R
 		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Недопустимый период истории"})
 		return
 	}
-	limit, offset, valid := historyPage(request.URL.Query())
+	chart := request.URL.Query().Get("chart") == "true"
+	maxLimit := 500
+	if chart {
+		maxLimit = 1000
+	}
+	limit, offset, valid := historyPage(request.URL.Query(), maxLimit)
 	if !valid {
 		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Некорректная пагинация"})
 		return
 	}
-	history, err := handler.checks.History(request.Context(), service.ID, time.Now().UTC().Add(-duration), limit, offset)
+	aggregateWindow := time.Duration(0)
+	if chart {
+		if period == "24h" {
+			aggregateWindow = 5 * time.Minute
+		} else if period == "7d" {
+			aggregateWindow = 15 * time.Minute
+		} else {
+			aggregateWindow = time.Hour
+		}
+	}
+	history, err := handler.checks.History(request.Context(), service.ID, time.Now().UTC().Add(-duration), limit, offset, aggregateWindow)
 	if err != nil {
 		writeJSON(writer, http.StatusBadGateway, map[string]string{"error": "Не удалось получить историю проверок"})
 		return
@@ -112,11 +127,11 @@ func (handler *handler) checkHistory(writer http.ResponseWriter, request *http.R
 	writeJSON(writer, http.StatusOK, history)
 }
 
-func historyPage(query url.Values) (int, int, bool) {
+func historyPage(query url.Values, maxLimit int) (int, int, bool) {
 	limit, offset := 100, 0
 	if value := query.Get("limit"); value != "" {
 		parsed, err := strconv.Atoi(value)
-		if err != nil || parsed < 1 || parsed > 500 {
+		if err != nil || parsed < 1 || parsed > maxLimit {
 			return 0, 0, false
 		}
 		limit = parsed

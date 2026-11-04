@@ -32,7 +32,7 @@ func (stub *stubCheckReader) Latest(_ context.Context, serviceID string) (monito
 	return stub.result, stub.err
 }
 
-func (stub *stubCheckReader) History(_ context.Context, serviceID string, _ time.Time, limit, offset int) (monitoring.History, error) {
+func (stub *stubCheckReader) History(_ context.Context, serviceID string, _ time.Time, limit, offset int, _ time.Duration) (monitoring.History, error) {
 	stub.requestedService = serviceID
 	stub.history.Limit, stub.history.Offset = limit, offset
 	return stub.history, stub.err

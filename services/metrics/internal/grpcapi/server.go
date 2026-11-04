@@ -15,14 +15,15 @@ import (
 
 type resultReader interface {
 	Latest(context.Context, string) (metric.Result, error)
-	History(context.Context, string, time.Time, int, int) ([]metric.Result, error)
+	History(context.Context, string, time.Time, int, int, time.Duration) ([]metric.Result, error)
 }
 
 func (server *Server) GetCheckHistory(ctx context.Context, request *metricsv1.GetCheckHistoryRequest) (*metricsv1.GetCheckHistoryResponse, error) {
 	if request.GetFrom() == nil || !request.GetFrom().IsValid() || request.GetServiceId() == "" || request.GetLimit() < 1 || request.GetOffset() < 0 {
 		return nil, status.Error(codes.InvalidArgument, "invalid history request")
 	}
-	results, err := server.reader.History(ctx, request.GetServiceId(), request.GetFrom().AsTime(), int(request.GetLimit()), int(request.GetOffset()))
+	aggregateWindow := time.Duration(request.GetAggregateWindowSeconds()) * time.Second
+	results, err := server.reader.History(ctx, request.GetServiceId(), request.GetFrom().AsTime(), int(request.GetLimit()), int(request.GetOffset()), aggregateWindow)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "failed to read monitoring data")
 	}

@@ -23,7 +23,8 @@ export function ServiceDashboard() {
   const [editing, setEditing] = useState(null)
   const [creating, setCreating] = useState(false)
   const [historyPeriod, setHistoryPeriod] = useState('24h')
-  const [historyOffset, setHistoryOffset] = useState(0)
+  const [historyPage, setHistoryPage] = useState(0)
+  const [historyPageSize, setHistoryPageSize] = useState(5)
   const servicesQuery = useQuery({ queryKey: ['services'], queryFn: () => apiRequest('/api/services') })
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['services'] })
   const createMutation = useMutation({
@@ -66,9 +67,15 @@ export function ServiceDashboard() {
     retry: false,
 	refetchInterval: 10_000,
   })
+  const chartQuery = useQuery({
+    queryKey: ['check-history-chart', currentServiceID, historyPeriod],
+    queryFn: () => apiRequest(`/api/services/${currentServiceID}/checks?period=${historyPeriod}&chart=true&limit=1000&offset=0`),
+    enabled: Boolean(currentServiceID),
+    retry: false,
+  })
   const historyQuery = useQuery({
-    queryKey: ['check-history', currentServiceID, historyPeriod, historyOffset],
-    queryFn: () => apiRequest(`/api/services/${currentServiceID}/checks?period=${historyPeriod}&limit=100&offset=${historyOffset}`),
+    queryKey: ['check-history-page', currentServiceID, historyPeriod, historyPage, historyPageSize],
+    queryFn: () => apiRequest(`/api/services/${currentServiceID}/checks?period=${historyPeriod}&limit=${historyPageSize}&offset=${historyPage * historyPageSize}`),
     enabled: Boolean(currentServiceID),
     retry: false,
   })
@@ -90,7 +97,7 @@ export function ServiceDashboard() {
       {services.length === 0 ? (
         <Card withBorder><Text>Сервисов пока нет. Добавьте первый сервис для мониторинга.</Text></Card>
       ) : (
-        <Select label="Выбранный сервис" data={services.map((service) => ({ value: service.id, label: service.name }))} value={currentServiceID} onChange={(value) => { setSelectedID(value); setHistoryOffset(0) }} />
+        <Select label="Выбранный сервис" data={services.map((service) => ({ value: service.id, label: service.name }))} value={currentServiceID} onChange={(value) => { setSelectedID(value); setHistoryPage(0) }} />
       )}
 
       {selectedService && (
@@ -114,8 +121,8 @@ export function ServiceDashboard() {
         </Card>
       )}
 
-      {selectedService && <ServiceStatus query={statusQuery} />}
-      {selectedService && <CheckHistory query={historyQuery} period={historyPeriod} onPeriodChange={(value) => { setHistoryPeriod(value); setHistoryOffset(0) }} onMore={() => setHistoryOffset((offset) => offset + 100)} />}
+      {selectedService && <ServiceStatus query={statusQuery} refreshing={servicesQuery.isFetching || incidentsQuery.isFetching || chartQuery.isFetching || historyQuery.isFetching} onRefresh={() => Promise.all([servicesQuery.refetch(), statusQuery.refetch(), incidentsQuery.refetch(), chartQuery.refetch(), historyQuery.refetch()])} />}
+      {selectedService && <CheckHistory chartQuery={chartQuery} query={historyQuery} period={historyPeriod} page={historyPage} pageSize={historyPageSize} onPeriodChange={(value) => { setHistoryPeriod(value); setHistoryPage(0) }} onPageChange={setHistoryPage} onPageSizeChange={(value) => { setHistoryPageSize(Number(value)); setHistoryPage(0) }} />}
       {selectedService && <Incidents query={incidentsQuery} />}
 
       <Modal opened={creating} onClose={() => setCreating(false)} title="Новый сервис">
@@ -130,19 +137,19 @@ export function ServiceDashboard() {
   )
 }
 
-function CheckHistory({ query, period, onPeriodChange, onMore }) {
+function CheckHistory({ chartQuery, query, period, page, pageSize, onPeriodChange, onPageChange, onPageSizeChange }) {
   if (query.isPending) return <Card withBorder><Text c="dimmed">Загрузка истории проверок…</Text></Card>
   if (query.isError) return <Alert color="red">{query.error.message}</Alert>
   const history = query.data
   const checks = history.checks ?? []
-  const chartData = [...checks].reverse().map((check) => ({ ...check, label: formatDate(check.checked_at) }))
+  const chartData = [...(chartQuery.data?.checks ?? [])].reverse().map((check) => ({ ...check, label: formatDate(check.checked_at) }))
   return <Card withBorder>
     <Stack gap="md">
       <Group justify="space-between" align="end">
         <Title order={3}>История проверок</Title>
         <Select aria-label="Период истории" value={period} onChange={(value) => value && onPeriodChange(value)} data={[{ value: '24h', label: '24 часа' }, { value: '7d', label: '7 дней' }, { value: '30d', label: '30 дней' }]} />
       </Group>
-      {checks.length === 0 ? <Text c="dimmed">За выбранный период проверок не было.</Text> : <>
+      {chartQuery.isPending ? <Text c="dimmed">Загрузка графика…</Text> : chartData.length > 0 && <>
         <div style={{ width: '100%', height: 260 }}>
           <ResponsiveContainer>
             <LineChart data={chartData} margin={{ top: 10, right: 12, left: 0, bottom: 10 }}>
@@ -153,11 +160,16 @@ function CheckHistory({ query, period, onPeriodChange, onMore }) {
             </LineChart>
           </ResponsiveContainer>
         </div>
+      </>}
+      {checks.length === 0 ? <Text c="dimmed">За выбранный период проверок не было.</Text> : <>
         <Table striped highlightOnHover withTableBorder>
           <Table.Thead><Table.Tr><Table.Th>Дата и время</Table.Th><Table.Th>Доступность</Table.Th><Table.Th>HTTP-код</Table.Th><Table.Th>Время ответа</Table.Th><Table.Th>Ошибка</Table.Th></Table.Tr></Table.Thead>
           <Table.Tbody>{checks.map((check, index) => <Table.Tr key={`${check.checked_at}-${index}`}><Table.Td>{formatDate(check.checked_at)}</Table.Td><Table.Td><Badge color={check.available ? 'green' : 'red'}>{check.available ? 'Успешно' : 'Ошибка'}</Badge></Table.Td><Table.Td>{check.status_code || '—'}</Table.Td><Table.Td>{check.response_time_ms} мс</Table.Td><Table.Td>{check.error || '—'}</Table.Td></Table.Tr>)}</Table.Tbody>
         </Table>
-        {checks.length === history.limit && <Button variant="default" loading={query.isFetching} onClick={onMore}>Показать ещё</Button>}
+        <Group justify="space-between">
+          <Select aria-label="Записей на странице" value={String(pageSize)} onChange={(value) => value && onPageSizeChange(value)} data={['5', '10', '25', '50', '100']} />
+          <Group gap="xs"><Button variant="default" size="xs" disabled={page === 0 || query.isFetching} onClick={() => onPageChange(page - 1)}>Назад</Button><Text size="sm">Страница {page + 1}</Text><Button variant="default" size="xs" disabled={checks.length < pageSize || query.isFetching} onClick={() => onPageChange(page + 1)}>Вперёд</Button></Group>
+        </Group>
       </>}
     </Stack>
   </Card>
@@ -176,7 +188,7 @@ function Incidents({ query }) {
   return <Card withBorder><Stack gap="sm"><Title order={3}>Инциденты</Title>{incidents.map((incident) => <div key={incident.id}><Group justify="space-between"><Text fw={600}>{incident.ended_at ? 'Завершённый сбой' : 'Текущий сбой'}</Text><Badge color={incident.ended_at ? 'gray' : 'red'}>{duration(incident)}</Badge></Group><Text size="sm" c="dimmed">Начало: {formatDate(incident.started_at)}</Text>{incident.ended_at && <Text size="sm" c="dimmed">Завершение: {formatDate(incident.ended_at)}</Text>}</div>)}</Stack></Card>
 }
 
-function ServiceStatus({ query }) {
+function ServiceStatus({ query, refreshing, onRefresh }) {
   if (query.isPending) return <div role="status" aria-label="Загрузка последней проверки"><Loader size="sm" /></div>
   if (query.isError) {
     return <Alert color="red">{query.error.message}</Alert>
@@ -187,7 +199,7 @@ function ServiceStatus({ query }) {
   return (
     <Card withBorder>
       <Stack gap="sm">
-        <Group justify="space-between"><Title order={3}>Состояние сервиса</Title><Group gap="sm"><Badge color={presentation.color}>{presentation.label}</Badge><Button variant="default" size="xs" loading={query.isFetching} onClick={() => query.refetch()}>Обновить</Button></Group></Group>
+        <Group justify="space-between"><Title order={3}>Состояние сервиса</Title><Group gap="sm"><Badge color={presentation.color}>{presentation.label}</Badge><Button variant="default" size="xs" loading={refreshing} onClick={onRefresh}>Обновить</Button></Group></Group>
         {!check && status.state === 'unknown' && <Text c="dimmed">Проверок для сервиса пока нет.</Text>}
         {check && <>
           {!status.current && <Text c="dimmed">Показан последний известный результат.</Text>}

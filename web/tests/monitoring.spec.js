@@ -42,7 +42,7 @@ function serviceStatus(overrides = {}) {
   return { state: 'available', current: true, last_check: checkResult(), ...overrides }
 }
 
-async function mockDashboard(page, { services = [service], status = serviceStatus(), statusCode = 200, statusHandler, incidents = [], checks = [checkResult()] } = {}) {
+async function mockDashboard(page, { services = [service], status = serviceStatus(), statusCode = 200, statusHandler, incidents = [], checks = [checkResult()], checksHandler } = {}) {
   let created = false
   const createdService = { ...service, id: 'service-2', name: 'Тестовый сервис', url: 'https://new.example' }
   await page.route('**/api/auth/me', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(user) }))
@@ -57,7 +57,11 @@ async function mockDashboard(page, { services = [service], status = serviceStatu
     return route.fulfill({ status: statusCode, contentType: 'application/json', body: JSON.stringify(status) })
   })
   await page.route('**/api/services/*/incidents', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(incidents) }))
-  await page.route('**/api/services/*/checks?**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ checks, limit: 100, offset: 0 }) }))
+  await page.route('**/api/services/*/checks?**', (route) => {
+    if (checksHandler) return checksHandler(route)
+    const url = new URL(route.request().url())
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ checks, limit: Number(url.searchParams.get('limit')), offset: Number(url.searchParams.get('offset')) }) })
+  })
 }
 
 test('показывает форму входа неавторизованному пользователю', async ({ page }) => {
@@ -97,6 +101,36 @@ test('показывает историю и запрашивает выбран
   await page.getByRole('textbox', { name: 'Период истории' }).click()
   await page.getByRole('option', { name: '7 дней', exact: true }).click()
   await expect(page.getByRole('textbox', { name: 'Период истории' })).toHaveValue('7 дней')
+})
+
+test('пагинирует историю отдельно от графика и меняет размер страницы', async ({ page }) => {
+  const requests = []
+  await mockDashboard(page, { checksHandler: (route) => {
+    const url = new URL(route.request().url())
+    requests.push(url.search)
+    const limit = Number(url.searchParams.get('limit'))
+    const offset = Number(url.searchParams.get('offset'))
+    const checks = limit === 1000 ? [checkResult({ response_time_ms: 10 }), checkResult({ response_time_ms: 20 })] : Array.from({ length: limit }, (_, index) => checkResult({ checked_at: `2026-11-01T10:${String(29 - index - offset).padStart(2, '0')}:00Z`, response_time_ms: index + offset }))
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ checks, limit, offset }) })
+  } })
+  await page.goto('/')
+  await expect(page.getByRole('textbox', { name: 'Записей на странице' })).toHaveValue('5')
+  await page.getByRole('button', { name: 'Вперёд' }).click()
+  await expect.poll(() => requests.some((request) => request.includes('limit=5') && request.includes('offset=5'))).toBeTruthy()
+  await page.getByRole('textbox', { name: 'Записей на странице' }).click()
+  await page.getByRole('option', { name: '10', exact: true }).click()
+  await expect.poll(() => requests.some((request) => request.includes('limit=10') && request.includes('offset=0'))).toBeTruthy()
+  expect(requests.some((request) => request.includes('limit=1000') && request.includes('chart=true'))).toBeTruthy()
+})
+
+test('обновляет все данные текущего экрана', async ({ page }) => {
+  const requests = { services: 0, status: 0, incidents: 0, checks: 0 }
+  await mockDashboard(page, { statusHandler: (route) => { requests.status += 1; return route.fulfill({ contentType: 'application/json', body: JSON.stringify(serviceStatus()) }) }, checksHandler: (route) => { requests.checks += 1; const url = new URL(route.request().url()); return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ checks: [checkResult()], limit: Number(url.searchParams.get('limit')), offset: 0 }) }) } })
+  await page.route('**/api/services', (route) => { requests.services += 1; return route.fulfill({ contentType: 'application/json', body: JSON.stringify([service]) }) })
+  await page.route('**/api/services/*/incidents', (route) => { requests.incidents += 1; return route.fulfill({ contentType: 'application/json', body: '[]' }) })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Обновить' }).click()
+  await expect.poll(() => Object.values(requests).every((count) => count >= 2)).toBeTruthy()
 })
 
 test('сообщает об отсутствии результатов проверки', async ({ page }) => {

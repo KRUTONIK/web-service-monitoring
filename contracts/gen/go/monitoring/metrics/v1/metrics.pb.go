@@ -159,13 +159,14 @@ func (x *GetLatestCheckResponse) GetServiceId() string {
 }
 
 type GetCheckHistoryRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ServiceId     string                 `protobuf:"bytes,1,opt,name=service_id,json=serviceId,proto3" json:"service_id,omitempty"`
-	From          *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=from,proto3" json:"from,omitempty"`
-	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
-	Offset        int32                  `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	ServiceId              string                 `protobuf:"bytes,1,opt,name=service_id,json=serviceId,proto3" json:"service_id,omitempty"`
+	From                   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=from,proto3" json:"from,omitempty"`
+	Limit                  int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset                 int32                  `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
+	AggregateWindowSeconds int64                  `protobuf:"varint,5,opt,name=aggregate_window_seconds,json=aggregateWindowSeconds,proto3" json:"aggregate_window_seconds,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *GetCheckHistoryRequest) Reset() {
@@ -222,6 +223,13 @@ func (x *GetCheckHistoryRequest) GetLimit() int32 {
 func (x *GetCheckHistoryRequest) GetOffset() int32 {
 	if x != nil {
 		return x.Offset
+	}
+	return 0
+}
+
+func (x *GetCheckHistoryRequest) GetAggregateWindowSeconds() int64 {
+	if x != nil {
+		return x.AggregateWindowSeconds
 	}
 	return 0
 }
@@ -381,13 +389,14 @@ const file_monitoring_metrics_v1_metrics_proto_rawDesc = "" +
 	"\x10response_time_ms\x18\x05 \x01(\x03R\x0eresponseTimeMs\x12\x14\n" +
 	"\x05error\x18\x06 \x01(\tR\x05error\x12\x1d\n" +
 	"\n" +
-	"service_id\x18\a \x01(\tR\tserviceId\"\x95\x01\n" +
+	"service_id\x18\a \x01(\tR\tserviceId\"\xcf\x01\n" +
 	"\x16GetCheckHistoryRequest\x12\x1d\n" +
 	"\n" +
 	"service_id\x18\x01 \x01(\tR\tserviceId\x12.\n" +
 	"\x04from\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x04from\x12\x14\n" +
 	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x04 \x01(\x05R\x06offset\"\x87\x02\n" +
+	"\x06offset\x18\x04 \x01(\x05R\x06offset\x128\n" +
+	"\x18aggregate_window_seconds\x18\x05 \x01(\x03R\x16aggregateWindowSeconds\"\x87\x02\n" +
 	"\vCheckResult\x12\x1f\n" +
 	"\vservice_url\x18\x01 \x01(\tR\n" +
 	"serviceUrl\x129\n" +

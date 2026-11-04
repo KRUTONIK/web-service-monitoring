@@ -30,6 +30,7 @@ message GetCheckHistoryRequest {
   google.protobuf.Timestamp from = 2;
   int32 limit = 3;
   int32 offset = 4;
+  int64 aggregate_window_seconds = 5;
 }
 
 message CheckResult {

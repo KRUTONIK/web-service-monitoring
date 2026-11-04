@@ -20,6 +20,7 @@ type stubReader struct {
 	requestedService string
 	from             time.Time
 	limit, offset    int
+	aggregate        time.Duration
 	err              error
 }
 
@@ -28,8 +29,8 @@ func (stub *stubReader) Latest(_ context.Context, serviceID string) (metric.Resu
 	return stub.result, stub.err
 }
 
-func (stub *stubReader) History(_ context.Context, serviceID string, from time.Time, limit, offset int) ([]metric.Result, error) {
-	stub.requestedService, stub.from, stub.limit, stub.offset = serviceID, from, limit, offset
+func (stub *stubReader) History(_ context.Context, serviceID string, from time.Time, limit, offset int, aggregate time.Duration) ([]metric.Result, error) {
+	stub.requestedService, stub.from, stub.limit, stub.offset, stub.aggregate = serviceID, from, limit, offset, aggregate
 	return stub.history, stub.err
 }
 
@@ -69,8 +70,8 @@ func TestGetLatestCheck(t *testing.T) {
 func TestGetCheckHistory(t *testing.T) {
 	from := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	reader := &stubReader{history: []metric.Result{{ServiceID: "service-1", CheckedAt: from.Add(time.Hour), Available: true, StatusCode: 200}}}
-	response, err := New(reader).GetCheckHistory(context.Background(), &metricsv1.GetCheckHistoryRequest{ServiceId: "service-1", From: timestamppb.New(from), Limit: 100})
-	if err != nil || len(response.Checks) != 1 || reader.requestedService != "service-1" || !reader.from.Equal(from) || reader.limit != 100 {
+	response, err := New(reader).GetCheckHistory(context.Background(), &metricsv1.GetCheckHistoryRequest{ServiceId: "service-1", From: timestamppb.New(from), Limit: 100, AggregateWindowSeconds: 300})
+	if err != nil || len(response.Checks) != 1 || reader.requestedService != "service-1" || !reader.from.Equal(from) || reader.limit != 100 || reader.aggregate != 5*time.Minute {
 		t.Fatalf("unexpected response=%+v err=%v reader=%+v", response, err, reader)
 	}
 }

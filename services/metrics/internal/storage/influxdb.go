@@ -66,7 +66,7 @@ func (influx *InfluxDB) Latest(ctx context.Context, serviceID string) (metric.Re
 
 // History returns checks in reverse chronological order.  The time range and
 // page bounds are supplied by the API service and never inferred from input.
-func (influx *InfluxDB) History(ctx context.Context, serviceID string, from time.Time, limit, offset int) ([]metric.Result, error) {
+func (influx *InfluxDB) History(ctx context.Context, serviceID string, from time.Time, limit, offset int, aggregateWindow time.Duration) ([]metric.Result, error) {
 	endpoint, err := url.Parse(influx.baseURL + "/api/v2/query")
 	if err != nil {
 		return nil, fmt.Errorf("parse InfluxDB URL: %w", err)
@@ -74,7 +74,7 @@ func (influx *InfluxDB) History(ctx context.Context, serviceID string, from time
 	query := endpoint.Query()
 	query.Set("org", influx.org)
 	endpoint.RawQuery = query.Encode()
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewBufferString(influx.historyQuery(serviceID, from, limit, offset)))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewBufferString(influx.historyQuery(serviceID, from, limit, offset, aggregateWindow)))
 	if err != nil {
 		return nil, fmt.Errorf("create InfluxDB query request: %w", err)
 	}
@@ -112,15 +112,20 @@ func (influx *InfluxDB) latestQuery(serviceID string) string {
   |> limit(n: 1)`, escapeFluxString(influx.bucket), serviceFilter)
 }
 
-func (influx *InfluxDB) historyQuery(serviceID string, from time.Time, limit, offset int) string {
+func (influx *InfluxDB) historyQuery(serviceID string, from time.Time, limit, offset int, aggregateWindow time.Duration) string {
+	aggregate := ""
+	if aggregateWindow > 0 {
+		aggregate = fmt.Sprintf("\n  |> aggregateWindow(every: %s, fn: last, createEmpty: false)", aggregateWindow.String())
+	}
 	return fmt.Sprintf(`from(bucket: "%s")
   |> range(start: %s)
   |> filter(fn: (r) => r._measurement == "service_check")
   |> filter(fn: (r) => r.service_id == "%s")
+%s
   |> pivot(rowKey: ["_time", "job_id", "service_id", "service_url"], columnKey: ["_field"], valueColumn: "_value")
   |> group()
   |> sort(columns: ["_time"], desc: true)
-  |> limit(n: %d, offset: %d)`, escapeFluxString(influx.bucket), from.UTC().Format(time.RFC3339Nano), escapeFluxString(serviceID), limit, offset)
+  |> limit(n: %d, offset: %d)`, escapeFluxString(influx.bucket), from.UTC().Format(time.RFC3339Nano), escapeFluxString(serviceID), aggregate, limit, offset)
 }
 
 func parseLatestResult(reader io.Reader) (metric.Result, error) {

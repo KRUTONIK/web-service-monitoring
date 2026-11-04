@@ -48,10 +48,10 @@ func (client *MetricsClient) Latest(ctx context.Context, serviceID string) (moni
 	}, nil
 }
 
-func (client *MetricsClient) History(ctx context.Context, serviceID string, from time.Time, limit, offset int) (monitoring.History, error) {
+func (client *MetricsClient) History(ctx context.Context, serviceID string, from time.Time, limit, offset int, aggregateWindow time.Duration) (monitoring.History, error) {
 	requestContext, cancel := context.WithTimeout(ctx, client.timeout)
 	defer cancel()
-	response, err := client.client.GetCheckHistory(requestContext, &metricsv1.GetCheckHistoryRequest{ServiceId: serviceID, From: timestamppb.New(from), Limit: int32(limit), Offset: int32(offset)})
+	response, err := client.client.GetCheckHistory(requestContext, &metricsv1.GetCheckHistoryRequest{ServiceId: serviceID, From: timestamppb.New(from), Limit: int32(limit), Offset: int32(offset), AggregateWindowSeconds: int64(aggregateWindow.Seconds())})
 	if err != nil {
 		return monitoring.History{}, fmt.Errorf("request check history: %w", err)
 	}
