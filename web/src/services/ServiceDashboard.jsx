@@ -61,6 +61,7 @@ export function ServiceDashboard() {
     queryFn: () => apiRequest(`/api/services/${currentServiceID}/incidents`),
     enabled: Boolean(currentServiceID),
     retry: false,
+	refetchInterval: 10_000,
   })
 
   if (servicesQuery.isPending) return <Loader />

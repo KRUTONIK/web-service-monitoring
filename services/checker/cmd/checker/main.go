@@ -42,7 +42,7 @@ func main() {
 
 type resultWriter interface {
 	Write(context.Context, check.Result) error
-	Latest(context.Context, string) (check.Result, error)
+	LatestBefore(context.Context, string, time.Time) (check.Result, error)
 }
 
 type incidentPublisher interface {
@@ -50,7 +50,7 @@ type incidentPublisher interface {
 }
 
 func runJob(ctx context.Context, checker *check.Checker, checkStorage resultWriter, publisher incidentPublisher, job jobs.CheckJob) error {
-	previous, previousErr := checkStorage.Latest(ctx, job.ServiceID)
+	previous, previousErr := checkStorage.LatestBefore(ctx, job.ServiceID, job.ScheduledAt)
 	if previousErr != nil && !errors.Is(previousErr, storage.ErrNotFound) {
 		return fmt.Errorf("read previous result: %w", previousErr)
 	}

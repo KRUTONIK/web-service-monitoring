@@ -58,7 +58,7 @@ func (influx *InfluxDB) Write(ctx context.Context, result check.Result) error {
 	return nil
 }
 
-func (influx *InfluxDB) Latest(ctx context.Context, serviceID string) (check.Result, error) {
+func (influx *InfluxDB) LatestBefore(ctx context.Context, serviceID string, before time.Time) (check.Result, error) {
 	endpoint, err := url.Parse(influx.baseURL + "/api/v2/query")
 	if err != nil {
 		return check.Result{}, fmt.Errorf("parse InfluxDB URL: %w", err)
@@ -67,12 +67,12 @@ func (influx *InfluxDB) Latest(ctx context.Context, serviceID string) (check.Res
 	query.Set("org", influx.org)
 	endpoint.RawQuery = query.Encode()
 	flux := fmt.Sprintf(`from(bucket: %q)
-  |> range(start: -24h)
+  |> range(start: 0, stop: %s)
   |> filter(fn: (r) => r._measurement == "service_check" and r.service_id == %q)
   |> pivot(rowKey: ["_time", "job_id", "service_id", "service_url"], columnKey: ["_field"], valueColumn: "_value")
   |> group()
   |> sort(columns: ["_time"], desc: true)
-  |> limit(n: 1)`, influx.bucket, serviceID)
+  |> limit(n: 1)`, influx.bucket, before.UTC().Format(time.RFC3339Nano), serviceID)
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewBufferString(flux))
 	if err != nil {
 		return check.Result{}, fmt.Errorf("create InfluxDB query: %w", err)
