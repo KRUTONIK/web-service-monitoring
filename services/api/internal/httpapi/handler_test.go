@@ -22,6 +22,7 @@ const testOrigin = "http://localhost:5173"
 
 type stubCheckReader struct {
 	result           monitoring.Result
+	history          monitoring.History
 	err              error
 	requestedService string
 }
@@ -29,6 +30,12 @@ type stubCheckReader struct {
 func (stub *stubCheckReader) Latest(_ context.Context, serviceID string) (monitoring.Result, error) {
 	stub.requestedService = serviceID
 	return stub.result, stub.err
+}
+
+func (stub *stubCheckReader) History(_ context.Context, serviceID string, _ time.Time, limit, offset int, _ time.Duration) (monitoring.History, error) {
+	stub.requestedService = serviceID
+	stub.history.Limit, stub.history.Offset = limit, offset
+	return stub.history, stub.err
 }
 
 type stubAuthentication struct {
@@ -146,6 +153,45 @@ func TestLatestCheckRequiresAuthentication(t *testing.T) {
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/checks/latest", nil))
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("unexpected status: %d", response.Code)
+	}
+}
+
+func TestCheckHistory(t *testing.T) {
+	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+	reader := &stubCheckReader{history: monitoring.History{Checks: []monitoring.Result{{ServiceID: "service-1", StatusCode: 200}}}}
+	handler, sessions, services, _ := newTestHandler(reader, authentication)
+	services.service = serviceconfig.Service{ID: "service-1", Enabled: false}
+	request := httptest.NewRequest(http.MethodGet, "/api/services/service-1/checks?period=7d&limit=20&offset=5", nil)
+	request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || reader.requestedService != "service-1" || reader.history.Limit != 20 || reader.history.Offset != 5 || !strings.Contains(response.Body.String(), `"checks"`) {
+		t.Fatalf("unexpected response=%d body=%s reader=%+v", response.Code, response.Body.String(), reader)
+	}
+}
+
+func TestCheckHistoryRejectsForeignServiceAndInvalidParameters(t *testing.T) {
+	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+	for name, testCase := range map[string]struct {
+		repositoryError error
+		path            string
+		want            int
+	}{
+		"foreign service": {serviceconfig.ErrNotFound, "/api/services/other/checks", http.StatusNotFound},
+		"invalid period":  {nil, "/api/services/service-1/checks?period=year", http.StatusBadRequest},
+		"invalid page":    {nil, "/api/services/service-1/checks?limit=501", http.StatusBadRequest},
+	} {
+		t.Run(name, func(t *testing.T) {
+			handler, sessions, services, _ := newTestHandler(&stubCheckReader{}, authentication)
+			services.err = testCase.repositoryError
+			request := httptest.NewRequest(http.MethodGet, testCase.path, nil)
+			request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != testCase.want {
+				t.Fatalf("unexpected status: %d", response.Code)
+			}
+		})
 	}
 }
 

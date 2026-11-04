@@ -7,7 +7,7 @@ services:
 
   scheduler:
     environment:
-      SCHEDULER_INTERVAL: 10s
+      SCHEDULER_INTERVAL: 1s
       SCHEDULER_CONFIG_SYNC_INTERVAL: 2s
       # Длиннее production-значения только для детерминированных integration tests:
       # тест успевает проверить retry-очередь и восстановить Consumer до TTL.

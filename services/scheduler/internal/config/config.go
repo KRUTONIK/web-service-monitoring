@@ -8,7 +8,7 @@ import (
 const (
 	defaultRabbitMQURL        = "amqp://monitoring:monitoring@localhost:5672/"
 	defaultAPITarget          = "localhost:9091"
-	defaultInterval           = time.Minute
+	defaultInterval           = time.Second
 	defaultConfigSyncInterval = time.Minute
 	defaultRetryDelay         = 5 * time.Second
 	defaultJobTTL             = time.Minute

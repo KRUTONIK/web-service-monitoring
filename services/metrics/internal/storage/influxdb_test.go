@@ -75,3 +75,12 @@ func TestLatestNotFound(t *testing.T) {
 		t.Fatalf("expected not found, got %v", err)
 	}
 }
+
+func TestHistoryQueryAggregatesAllJobsIntoTimeWindows(t *testing.T) {
+	query := NewInfluxDB(nil, "", "", "bucket", "").historyQuery("service-1", time.Date(2026, 11, 5, 0, 0, 0, 0, time.UTC), 1000, 0, time.Hour)
+	group := `|> group(columns: ["service_id", "service_url", "_field"])`
+	aggregate := `|> aggregateWindow(every: 1h0m0s, fn: last, createEmpty: false)`
+	if !strings.Contains(query, group) || !strings.Contains(query, aggregate) || strings.Index(query, group) > strings.Index(query, aggregate) || strings.Contains(query, `rowKey: ["_time", "job_id"`) {
+		t.Fatalf("unexpected aggregate query: %s", query)
+	}
+}

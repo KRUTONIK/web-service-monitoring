@@ -66,7 +66,7 @@ services:
     environment:
       API_GRPC_ADDRESS: api:9091
       RABBITMQ_URL: amqp://monitoring:monitoring@rabbitmq:5672/
-      SCHEDULER_INTERVAL: 10s
+      SCHEDULER_INTERVAL: 1s
     depends_on:
       api:
         condition: service_healthy

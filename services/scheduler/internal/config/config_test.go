@@ -24,7 +24,7 @@ func TestLoadUsesDefaultsForInvalidValues(t *testing.T) {
 	t.Setenv("SCHEDULER_CONFIG_SYNC_INTERVAL", "invalid")
 	t.Setenv("CHECKER_JOB_RETRY_DELAY", "invalid")
 	t.Setenv("CHECKER_JOB_TTL", "invalid")
-	if cfg := Load(); cfg.Interval != time.Minute || cfg.ConfigSyncInterval != defaultConfigSyncInterval || cfg.RetryDelay != defaultRetryDelay || cfg.JobTTL != defaultJobTTL {
+	if cfg := Load(); cfg.Interval != time.Second || cfg.ConfigSyncInterval != defaultConfigSyncInterval || cfg.RetryDelay != defaultRetryDelay || cfg.JobTTL != defaultJobTTL {
 		t.Fatalf("unexpected configuration: %+v", cfg)
 	}
 }
