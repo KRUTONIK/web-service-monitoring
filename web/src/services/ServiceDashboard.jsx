@@ -75,7 +75,7 @@ export function ServiceDashboard() {
   })
   const historyQuery = useQuery({
     queryKey: ['check-history-page', currentServiceID, historyPeriod, historyPage, historyPageSize],
-    queryFn: () => apiRequest(`/api/services/${currentServiceID}/checks?period=${historyPeriod}&limit=${historyPageSize}&offset=${historyPage * historyPageSize}`),
+    queryFn: () => apiRequest(`/api/services/${currentServiceID}/checks?period=${historyPeriod}&limit=${historyPageSize + 1}&offset=${historyPage * historyPageSize}`),
     enabled: Boolean(currentServiceID),
     retry: false,
   })
@@ -142,6 +142,8 @@ function CheckHistory({ chartQuery, query, period, page, pageSize, onPeriodChang
   if (query.isError) return <Alert color="red">{query.error.message}</Alert>
   const history = query.data
   const checks = history.checks ?? []
+  const pageChecks = checks.slice(0, pageSize)
+  const hasNextPage = checks.length > pageSize
   const chartData = [...(chartQuery.data?.checks ?? [])].reverse().map((check) => ({ ...check, label: formatDate(check.checked_at) }))
   return <Card withBorder>
     <Stack gap="md">
@@ -161,14 +163,14 @@ function CheckHistory({ chartQuery, query, period, page, pageSize, onPeriodChang
           </ResponsiveContainer>
         </div>
       </>}
-      {checks.length === 0 ? <Text c="dimmed">За выбранный период проверок не было.</Text> : <>
+      {pageChecks.length === 0 ? <Text c="dimmed">За выбранный период проверок не было.</Text> : <>
         <Table striped highlightOnHover withTableBorder>
           <Table.Thead><Table.Tr><Table.Th>Дата и время</Table.Th><Table.Th>Доступность</Table.Th><Table.Th>HTTP-код</Table.Th><Table.Th>Время ответа</Table.Th><Table.Th>Ошибка</Table.Th></Table.Tr></Table.Thead>
-          <Table.Tbody>{checks.map((check, index) => <Table.Tr key={`${check.checked_at}-${index}`}><Table.Td>{formatDate(check.checked_at)}</Table.Td><Table.Td><Badge color={check.available ? 'green' : 'red'}>{check.available ? 'Успешно' : 'Ошибка'}</Badge></Table.Td><Table.Td>{check.status_code || '—'}</Table.Td><Table.Td>{check.response_time_ms} мс</Table.Td><Table.Td>{check.error || '—'}</Table.Td></Table.Tr>)}</Table.Tbody>
+          <Table.Tbody>{pageChecks.map((check, index) => <Table.Tr key={`${check.checked_at}-${index}`}><Table.Td>{formatDate(check.checked_at)}</Table.Td><Table.Td><Badge color={check.available ? 'green' : 'red'}>{check.available ? 'Успешно' : 'Ошибка'}</Badge></Table.Td><Table.Td>{check.status_code || '—'}</Table.Td><Table.Td>{check.response_time_ms} мс</Table.Td><Table.Td>{check.error || '—'}</Table.Td></Table.Tr>)}</Table.Tbody>
         </Table>
         <Group justify="space-between">
           <Select aria-label="Записей на странице" value={String(pageSize)} onChange={(value) => value && onPageSizeChange(value)} data={['5', '10', '25', '50', '100']} />
-          <Group gap="xs"><Button variant="default" size="xs" disabled={page === 0 || query.isFetching} onClick={() => onPageChange(page - 1)}>Назад</Button><Text size="sm">Страница {page + 1}</Text><Button variant="default" size="xs" disabled={checks.length < pageSize || query.isFetching} onClick={() => onPageChange(page + 1)}>Вперёд</Button></Group>
+          <Group gap="xs"><Button variant="default" size="xs" disabled={page === 0 || query.isFetching} onClick={() => onPageChange(page - 1)}>Назад</Button><Text size="sm">Страница {page + 1}</Text><Button variant="default" size="xs" disabled={!hasNextPage || query.isFetching} onClick={() => onPageChange(page + 1)}>Вперёд</Button></Group>
         </Group>
       </>}
     </Stack>

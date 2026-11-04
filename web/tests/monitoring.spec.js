@@ -116,10 +116,10 @@ test('пагинирует историю отдельно от графика �
   await page.goto('/')
   await expect(page.getByRole('textbox', { name: 'Записей на странице' })).toHaveValue('5')
   await page.getByRole('button', { name: 'Вперёд' }).click()
-  await expect.poll(() => requests.some((request) => request.includes('limit=5') && request.includes('offset=5'))).toBeTruthy()
+  await expect.poll(() => requests.some((request) => request.includes('limit=6') && request.includes('offset=5'))).toBeTruthy()
   await page.getByRole('textbox', { name: 'Записей на странице' }).click()
   await page.getByRole('option', { name: '10', exact: true }).click()
-  await expect.poll(() => requests.some((request) => request.includes('limit=10') && request.includes('offset=0'))).toBeTruthy()
+  await expect.poll(() => requests.some((request) => request.includes('limit=11') && request.includes('offset=0'))).toBeTruthy()
   expect(requests.some((request) => request.includes('limit=1000') && request.includes('chart=true'))).toBeTruthy()
 })
 
