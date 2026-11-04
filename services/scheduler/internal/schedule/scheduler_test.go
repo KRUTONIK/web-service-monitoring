@@ -13,6 +13,23 @@ import (
 type stubPublisher struct {
 	services []serviceconfig.Service
 	err      error
+	calls    int
+}
+
+func TestScheduleRunsTenSecondServiceOnOneSecondTicks(t *testing.T) {
+	state := serviceconfig.NewState()
+	state.Replace(serviceconfig.Snapshot{Services: []serviceconfig.Service{{ID: "service-1", URL: "https://service.test", Enabled: true, IntervalSeconds: 10}}})
+	publisher := &stubPublisher{}
+	scheduler := New(state, publisher)
+	now := time.Date(2026, time.November, 2, 12, 0, 0, 0, time.UTC)
+	for second := 0; second <= 20; second++ {
+		if err := scheduler.scheduleAt(context.Background(), now.Add(time.Duration(second)*time.Second)); err != nil {
+			t.Fatalf("schedule at %d seconds: %v", second, err)
+		}
+	}
+	if publisher.calls != 3 {
+		t.Fatalf("expected checks at 0, 10 and 20 seconds, got %d publications", publisher.calls)
+	}
 }
 
 func TestScheduleRespectsIndividualIntervals(t *testing.T) {
@@ -63,6 +80,7 @@ func TestScheduleAppliesChangedIntervalWithoutRestart(t *testing.T) {
 }
 
 func (stub *stubPublisher) PublishJobs(_ context.Context, services []serviceconfig.Service) error {
+	stub.calls++
 	stub.services = services
 	return stub.err
 }
