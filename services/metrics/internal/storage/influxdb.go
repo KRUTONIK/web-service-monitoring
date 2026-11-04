@@ -115,14 +115,14 @@ func (influx *InfluxDB) latestQuery(serviceID string) string {
 func (influx *InfluxDB) historyQuery(serviceID string, from time.Time, limit, offset int, aggregateWindow time.Duration) string {
 	aggregate := ""
 	if aggregateWindow > 0 {
-		aggregate = fmt.Sprintf("\n  |> aggregateWindow(every: %s, fn: last, createEmpty: false)", aggregateWindow.String())
+		aggregate = fmt.Sprintf("\n  |> group(columns: [\"service_id\", \"service_url\", \"_field\"])\n  |> aggregateWindow(every: %s, fn: last, createEmpty: false)", aggregateWindow.String())
 	}
 	return fmt.Sprintf(`from(bucket: "%s")
   |> range(start: %s)
   |> filter(fn: (r) => r._measurement == "service_check")
   |> filter(fn: (r) => r.service_id == "%s")
 %s
-  |> pivot(rowKey: ["_time", "job_id", "service_id", "service_url"], columnKey: ["_field"], valueColumn: "_value")
+  |> pivot(rowKey: ["_time", "service_id", "service_url"], columnKey: ["_field"], valueColumn: "_value")
   |> group()
   |> sort(columns: ["_time"], desc: true)
   |> limit(n: %d, offset: %d)`, escapeFluxString(influx.bucket), from.UTC().Format(time.RFC3339Nano), escapeFluxString(serviceID), aggregate, limit, offset)

@@ -102,7 +102,7 @@ func (handler *handler) checkHistory(writer http.ResponseWriter, request *http.R
 	chart := request.URL.Query().Get("chart") == "true"
 	maxLimit := 500
 	if chart {
-		maxLimit = 1000
+		maxLimit = 10000
 	}
 	limit, offset, valid := historyPage(request.URL.Query(), maxLimit)
 	if !valid {
@@ -111,11 +111,9 @@ func (handler *handler) checkHistory(writer http.ResponseWriter, request *http.R
 	}
 	aggregateWindow := time.Duration(0)
 	if chart {
-		if period == "24h" {
-			aggregateWindow = 5 * time.Minute
-		} else if period == "7d" {
+		if period == "7d" {
 			aggregateWindow = 15 * time.Minute
-		} else {
+		} else if period == "30d" {
 			aggregateWindow = time.Hour
 		}
 	}

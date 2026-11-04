@@ -10,6 +10,10 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('ru-RU')
 }
 
+function formatChartDate(value) {
+  return new Date(value).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit', day: '2-digit', month: '2-digit' })
+}
+
 const statePresentation = {
   available: { label: 'Доступен', color: 'green' },
   unavailable: { label: 'Недоступен', color: 'red' },
@@ -69,7 +73,7 @@ export function ServiceDashboard() {
   })
   const chartQuery = useQuery({
     queryKey: ['check-history-chart', currentServiceID, historyPeriod],
-    queryFn: () => apiRequest(`/api/services/${currentServiceID}/checks?period=${historyPeriod}&chart=true&limit=1000&offset=0`),
+    queryFn: () => apiRequest(`/api/services/${currentServiceID}/checks?period=${historyPeriod}&chart=true&limit=10000&offset=0`),
     enabled: Boolean(currentServiceID),
     retry: false,
   })
@@ -144,7 +148,7 @@ function CheckHistory({ chartQuery, query, period, page, pageSize, onPeriodChang
   const checks = history.checks ?? []
   const pageChecks = checks.slice(0, pageSize)
   const hasNextPage = checks.length > pageSize
-  const chartData = [...(chartQuery.data?.checks ?? [])].reverse().map((check) => ({ ...check, label: formatDate(check.checked_at) }))
+  const chartData = (chartQuery.data?.checks ?? []).map((check) => ({ ...check, checkedAt: new Date(check.checked_at).getTime() })).filter((check) => !Number.isNaN(check.checkedAt)).sort((left, right) => left.checkedAt - right.checkedAt).filter((check, index, values) => index === 0 || check.checkedAt !== values[index - 1].checkedAt)
   return <Card withBorder>
     <Stack gap="md">
       <Group justify="space-between" align="end">
@@ -155,10 +159,10 @@ function CheckHistory({ chartQuery, query, period, page, pageSize, onPeriodChang
         <div style={{ width: '100%', height: 260 }}>
           <ResponsiveContainer>
             <LineChart data={chartData} margin={{ top: 10, right: 12, left: 0, bottom: 10 }}>
-              <XAxis dataKey="label" minTickGap={60} tick={{ fontSize: 11 }} />
+              <XAxis dataKey="checkedAt" type="number" scale="time" domain={['dataMin', 'dataMax']} minTickGap={60} tickFormatter={formatChartDate} tick={{ fontSize: 11 }} />
               <YAxis unit=" мс" width={70} tick={{ fontSize: 11 }} />
-              <Tooltip labelFormatter={(value) => value} formatter={(value, _, item) => [`${value} мс`, item.payload.available ? 'Успешная проверка' : 'Неуспешная проверка']} />
-              <Line type="monotone" dataKey="response_time_ms" stroke="#228be6" strokeWidth={2} connectNulls={false} dot={({ cx, cy, payload }) => <circle cx={cx} cy={cy} r="4" fill={payload.available ? '#40c057' : '#fa5252'} />} activeDot={{ r: 6 }} />
+              <Tooltip content={<HistoryTooltip />} />
+              <Line type="linear" dataKey="response_time_ms" stroke="#228be6" strokeWidth={2} connectNulls={false} dot={({ cx, cy, payload }) => <circle data-testid="history-point" cx={cx} cy={cy} r="4" fill={payload.available ? '#40c057' : '#fa5252'} />} activeDot={{ r: 6 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -175,6 +179,18 @@ function CheckHistory({ chartQuery, query, period, page, pageSize, onPeriodChang
       </>}
     </Stack>
   </Card>
+}
+
+function HistoryTooltip({ active, payload }) {
+  if (!active || !payload?.[0]) return null
+  const check = payload[0].payload
+  return <div style={{ background: 'white', border: '1px solid #dee2e6', borderRadius: 4, padding: 8 }}>
+    <Text size="sm">{formatDate(check.checked_at)}</Text>
+    <Text size="sm">{check.available ? 'Успешная проверка' : 'Неуспешная проверка'}</Text>
+    <Text size="sm">HTTP-код: {check.status_code || '—'}</Text>
+    <Text size="sm">Время ответа: {check.response_time_ms} мс</Text>
+    {check.error && <Text size="sm" c="red">{check.error}</Text>}
+  </div>
 }
 
 function Incidents({ query }) {
