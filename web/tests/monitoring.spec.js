@@ -42,7 +42,7 @@ function serviceStatus(overrides = {}) {
   return { state: 'available', current: true, last_check: checkResult(), ...overrides }
 }
 
-async function mockDashboard(page, { services = [service], status = serviceStatus(), statusCode = 200, statusHandler, incidents = [] } = {}) {
+async function mockDashboard(page, { services = [service], status = serviceStatus(), statusCode = 200, statusHandler, incidents = [], checks = [checkResult()] } = {}) {
   let created = false
   const createdService = { ...service, id: 'service-2', name: 'Тестовый сервис', url: 'https://new.example' }
   await page.route('**/api/auth/me', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(user) }))
@@ -57,6 +57,7 @@ async function mockDashboard(page, { services = [service], status = serviceStatu
     return route.fulfill({ status: statusCode, contentType: 'application/json', body: JSON.stringify(status) })
   })
   await page.route('**/api/services/*/incidents', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(incidents) }))
+  await page.route('**/api/services/*/checks?**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ checks, limit: 100, offset: 0 }) }))
 }
 
 test('показывает форму входа неавторизованному пользователю', async ({ page }) => {
@@ -85,6 +86,17 @@ test('показывает сервис и актуальное состояни
   await expect(page.getByText('Доступен')).toBeVisible()
   await expect(page.getByText('42 мс')).toBeVisible()
   await expect(page.getByText(/01\.11\.2026/)).toBeVisible()
+})
+
+test('показывает историю и запрашивает выбранный период', async ({ page }) => {
+  const checks = [checkResult({ checked_at: '2026-11-01T10:30:00Z', response_time_ms: 42 }), checkResult({ checked_at: '2026-11-01T10:20:00Z', available: false, status_code: 503, error: 'Ошибка соединения' })]
+  await mockDashboard(page, { checks })
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'История проверок' })).toBeVisible()
+  await expect(page.getByText('Ошибка соединения')).toBeVisible()
+  await page.getByRole('textbox', { name: 'Период истории' }).click()
+  await page.getByRole('option', { name: '7 дней', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Период истории' })).toHaveValue('7 дней')
 })
 
 test('сообщает об отсутствии результатов проверки', async ({ page }) => {

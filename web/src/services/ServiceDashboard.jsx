@@ -1,6 +1,7 @@
-import { Alert, Badge, Button, Card, Group, Loader, Modal, Select, SimpleGrid, Stack, Text, Title } from '@mantine/core'
+import { Alert, Badge, Button, Card, Group, Loader, Modal, Select, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { apiRequest, jsonRequest } from '../api.js'
 import { ServiceForm } from './ServiceForm.jsx'
 
@@ -21,6 +22,8 @@ export function ServiceDashboard() {
   const [selectedID, setSelectedID] = useState(null)
   const [editing, setEditing] = useState(null)
   const [creating, setCreating] = useState(false)
+  const [historyPeriod, setHistoryPeriod] = useState('24h')
+  const [historyOffset, setHistoryOffset] = useState(0)
   const servicesQuery = useQuery({ queryKey: ['services'], queryFn: () => apiRequest('/api/services') })
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['services'] })
   const createMutation = useMutation({
@@ -63,6 +66,12 @@ export function ServiceDashboard() {
     retry: false,
 	refetchInterval: 10_000,
   })
+  const historyQuery = useQuery({
+    queryKey: ['check-history', currentServiceID, historyPeriod, historyOffset],
+    queryFn: () => apiRequest(`/api/services/${currentServiceID}/checks?period=${historyPeriod}&limit=100&offset=${historyOffset}`),
+    enabled: Boolean(currentServiceID),
+    retry: false,
+  })
 
   if (servicesQuery.isPending) return <Loader />
   if (servicesQuery.isError) return <Alert color="red">{servicesQuery.error.message}</Alert>
@@ -81,7 +90,7 @@ export function ServiceDashboard() {
       {services.length === 0 ? (
         <Card withBorder><Text>Сервисов пока нет. Добавьте первый сервис для мониторинга.</Text></Card>
       ) : (
-        <Select label="Выбранный сервис" data={services.map((service) => ({ value: service.id, label: service.name }))} value={currentServiceID} onChange={setSelectedID} />
+        <Select label="Выбранный сервис" data={services.map((service) => ({ value: service.id, label: service.name }))} value={currentServiceID} onChange={(value) => { setSelectedID(value); setHistoryOffset(0) }} />
       )}
 
       {selectedService && (
@@ -106,6 +115,7 @@ export function ServiceDashboard() {
       )}
 
       {selectedService && <ServiceStatus query={statusQuery} />}
+      {selectedService && <CheckHistory query={historyQuery} period={historyPeriod} onPeriodChange={(value) => { setHistoryPeriod(value); setHistoryOffset(0) }} onMore={() => setHistoryOffset((offset) => offset + 100)} />}
       {selectedService && <Incidents query={incidentsQuery} />}
 
       <Modal opened={creating} onClose={() => setCreating(false)} title="Новый сервис">
@@ -118,6 +128,39 @@ export function ServiceDashboard() {
       </Modal>
     </Stack>
   )
+}
+
+function CheckHistory({ query, period, onPeriodChange, onMore }) {
+  if (query.isPending) return <Card withBorder><Text c="dimmed">Загрузка истории проверок…</Text></Card>
+  if (query.isError) return <Alert color="red">{query.error.message}</Alert>
+  const history = query.data
+  const checks = history.checks ?? []
+  const chartData = [...checks].reverse().map((check) => ({ ...check, label: formatDate(check.checked_at) }))
+  return <Card withBorder>
+    <Stack gap="md">
+      <Group justify="space-between" align="end">
+        <Title order={3}>История проверок</Title>
+        <Select aria-label="Период истории" value={period} onChange={(value) => value && onPeriodChange(value)} data={[{ value: '24h', label: '24 часа' }, { value: '7d', label: '7 дней' }, { value: '30d', label: '30 дней' }]} />
+      </Group>
+      {checks.length === 0 ? <Text c="dimmed">За выбранный период проверок не было.</Text> : <>
+        <div style={{ width: '100%', height: 260 }}>
+          <ResponsiveContainer>
+            <LineChart data={chartData} margin={{ top: 10, right: 12, left: 0, bottom: 10 }}>
+              <XAxis dataKey="label" minTickGap={60} tick={{ fontSize: 11 }} />
+              <YAxis unit=" мс" width={70} tick={{ fontSize: 11 }} />
+              <Tooltip labelFormatter={(value) => value} formatter={(value, _, item) => [`${value} мс`, item.payload.available ? 'Успешная проверка' : 'Неуспешная проверка']} />
+              <Line type="monotone" dataKey="response_time_ms" stroke="#228be6" strokeWidth={2} connectNulls={false} dot={({ cx, cy, payload }) => <circle cx={cx} cy={cy} r="4" fill={payload.available ? '#40c057' : '#fa5252'} />} activeDot={{ r: 6 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <Table striped highlightOnHover withTableBorder>
+          <Table.Thead><Table.Tr><Table.Th>Дата и время</Table.Th><Table.Th>Доступность</Table.Th><Table.Th>HTTP-код</Table.Th><Table.Th>Время ответа</Table.Th><Table.Th>Ошибка</Table.Th></Table.Tr></Table.Thead>
+          <Table.Tbody>{checks.map((check, index) => <Table.Tr key={`${check.checked_at}-${index}`}><Table.Td>{formatDate(check.checked_at)}</Table.Td><Table.Td><Badge color={check.available ? 'green' : 'red'}>{check.available ? 'Успешно' : 'Ошибка'}</Badge></Table.Td><Table.Td>{check.status_code || '—'}</Table.Td><Table.Td>{check.response_time_ms} мс</Table.Td><Table.Td>{check.error || '—'}</Table.Td></Table.Tr>)}</Table.Tbody>
+        </Table>
+        {checks.length === history.limit && <Button variant="default" loading={query.isFetching} onClick={onMore}>Показать ещё</Button>}
+      </>}
+    </Stack>
+  </Card>
 }
 
 function Incidents({ query }) {
