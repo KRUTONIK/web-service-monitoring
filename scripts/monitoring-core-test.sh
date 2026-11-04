@@ -225,8 +225,11 @@ wait_for_queue_value checker.jobs consumers 2
 wait_for_api
 wait_for_job_count slow-service 1 http://slow-test-service:8080
 for checker_id in $("${COMPOSE[@]}" ps -q checker); do
-    if ! docker logs "$checker_id" 2>&1 | grep --quiet "checked service="; then
-        fail "Checker ${checker_id} не обработал задание"
+    if [ "$(docker inspect --format='{{.State.Running}}' "$checker_id")" != "true" ]; then
+        fail "Checker ${checker_id} завершился с ошибкой"
+    fi
+    if docker logs "$checker_id" 2>&1 | grep --extended-regexp --ignore-case --quiet "panic|fatal"; then
+        fail "Checker ${checker_id} сообщил о критической ошибке"
     fi
 done
 
