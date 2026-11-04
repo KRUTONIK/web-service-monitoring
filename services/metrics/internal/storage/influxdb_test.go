@@ -84,3 +84,10 @@ func TestHistoryQueryAggregatesAllJobsIntoTimeWindows(t *testing.T) {
 		t.Fatalf("unexpected aggregate query: %s", query)
 	}
 }
+
+func TestSummaryQueryHasNoLimitForLargePeriods(t *testing.T) {
+	query := NewInfluxDB(nil, "", "", "bucket", "").summaryQuery("service-1", time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), `|> count(column: "_value")`)
+	if strings.Contains(query, "limit(") || !strings.Contains(query, `range(start: 2026-11-01T00:00:00Z)`) || !strings.Contains(query, `r.service_id == "service-1"`) {
+		t.Fatalf("summary query must cover the full period without a page limit: %s", query)
+	}
+}

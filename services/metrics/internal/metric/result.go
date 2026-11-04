@@ -11,3 +11,9 @@ type Result struct {
 	ResponseTimeMS int64
 	Error          string
 }
+
+type Summary struct {
+	TotalChecks, SuccessfulChecks, P95ResponseMS int64
+	HasResponseMetrics                           bool
+	AverageResponseMS                            float64
+}

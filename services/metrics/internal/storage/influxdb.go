@@ -97,6 +97,92 @@ func (influx *InfluxDB) History(ctx context.Context, serviceID string, from time
 	return results, nil
 }
 
+func (influx *InfluxDB) Summary(ctx context.Context, serviceID string, from time.Time) (metric.Summary, error) {
+	total, err := influx.scalar(ctx, influx.summaryQuery(serviceID, from, `|> filter(fn: (r) => r._field == "available")
+  |> group()
+  |> count(column: "_value")`))
+	if err != nil {
+		return metric.Summary{}, err
+	}
+	success, err := influx.scalar(ctx, influx.summaryQuery(serviceID, from, `|> filter(fn: (r) => r._field == "available" and r._value == true)
+  |> group()
+  |> count(column: "_value")`))
+	if err != nil {
+		return metric.Summary{}, err
+	}
+	if success == 0 {
+		return metric.Summary{TotalChecks: int64(total)}, nil
+	}
+	base := `|> pivot(rowKey: ["_time", "job_id", "service_id", "service_url"], columnKey: ["_field"], valueColumn: "_value")
+  |> filter(fn: (r) => r.available == true)
+  |> group()`
+	average, err := influx.scalar(ctx, influx.summaryQuery(serviceID, from, base+`
+  |> mean(column: "response_time_ms")`))
+	if err != nil {
+		return metric.Summary{}, err
+	}
+	p95, err := influx.scalar(ctx, influx.summaryQuery(serviceID, from, base+`
+  |> quantile(column: "response_time_ms", q: 0.95, method: "exact_selector")`))
+	if err != nil {
+		return metric.Summary{}, err
+	}
+	return metric.Summary{TotalChecks: int64(total), SuccessfulChecks: int64(success), HasResponseMetrics: true, AverageResponseMS: average, P95ResponseMS: int64(p95)}, nil
+}
+
+func (influx *InfluxDB) summaryQuery(serviceID string, from time.Time, operation string) string {
+	return fmt.Sprintf(`from(bucket: "%s")
+  |> range(start: %s)
+  |> filter(fn: (r) => r._measurement == "service_check" and r.service_id == "%s")
+  %s`, escapeFluxString(influx.bucket), from.UTC().Format(time.RFC3339Nano), escapeFluxString(serviceID), operation)
+}
+func (influx *InfluxDB) scalar(ctx context.Context, query string) (float64, error) {
+	endpoint, err := url.Parse(influx.baseURL + "/api/v2/query")
+	if err != nil {
+		return 0, err
+	}
+	values := endpoint.Query()
+	values.Set("org", influx.org)
+	endpoint.RawQuery = values.Encode()
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewBufferString(query))
+	if err != nil {
+		return 0, err
+	}
+	request.Header.Set("Authorization", "Token "+influx.token)
+	request.Header.Set("Accept", "application/csv")
+	request.Header.Set("Content-Type", "application/vnd.flux")
+	response, err := influx.client.Do(request)
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("InfluxDB returned %s", response.Status)
+	}
+	content, err := io.ReadAll(response.Body)
+	if err != nil {
+		return 0, err
+	}
+	lines := []string{}
+	for _, line := range strings.Split(string(content), "\n") {
+		if line != "" && !strings.HasPrefix(line, "#") {
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) < 2 {
+		return 0, nil
+	}
+	records, err := csv.NewReader(strings.NewReader(strings.Join(lines, "\n"))).ReadAll()
+	if err != nil || len(records) < 2 {
+		return 0, err
+	}
+	for i, name := range records[0] {
+		if (name == "_value" || name == "response_time_ms") && i < len(records[1]) {
+			return strconv.ParseFloat(records[1][i], 64)
+		}
+	}
+	return 0, nil
+}
+
 func (influx *InfluxDB) latestQuery(serviceID string) string {
 	serviceFilter := ""
 	if serviceID != "" {

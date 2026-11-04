@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
-	"math"
 	"mime"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +23,7 @@ import (
 type checkReader interface {
 	Latest(context.Context, string) (monitoring.Result, error)
 	History(context.Context, string, time.Time, int, int, time.Duration) (monitoring.History, error)
+	Summary(context.Context, string, time.Time) (monitoring.Summary, error)
 }
 
 type authentication interface {
@@ -100,7 +99,7 @@ func (handler *handler) serviceMetrics(writer http.ResponseWriter, request *http
 	_ = period
 	now := time.Now().UTC()
 	from := now.Add(-duration)
-	history, err := handler.checks.History(request.Context(), service.ID, from, 10000, 0, 0)
+	summary, err := handler.checks.Summary(request.Context(), service.ID, from)
 	if err != nil {
 		writeJSON(writer, http.StatusBadGateway, map[string]string{"error": "Не удалось получить показатели мониторинга"})
 		return
@@ -110,7 +109,12 @@ func (handler *handler) serviceMetrics(writer http.ResponseWriter, request *http
 		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось получить инциденты"})
 		return
 	}
-	writeJSON(writer, http.StatusOK, summarizeMonitoring(history.Checks, incidents, from, now))
+	count, downtime := summarizeIncidents(incidents, from, now)
+	summary.IncidentCount, summary.DowntimeSeconds = count, downtime
+	if summary.TotalChecks > 0 {
+		summary.SuccessRate = float64(summary.SuccessfulChecks) * 100 / float64(summary.TotalChecks)
+	}
+	writeJSON(writer, http.StatusOK, summary)
 }
 
 func metricsPeriod(period string) (string, time.Duration, bool) {
@@ -122,35 +126,15 @@ func metricsPeriod(period string) (string, time.Duration, bool) {
 	return period, duration, ok
 }
 
-func summarizeMonitoring(checks []monitoring.Result, incidents []incident.Incident, from, now time.Time) monitoring.Summary {
-	summary := monitoring.Summary{TotalChecks: int64(len(checks))}
-	values := make([]int64, 0, len(checks))
-	for _, check := range checks {
-		if check.Available {
-			summary.SuccessfulChecks++
-			values = append(values, check.ResponseTimeMS)
-		}
-	}
-	if summary.TotalChecks > 0 {
-		summary.SuccessRate = float64(summary.SuccessfulChecks) * 100 / float64(summary.TotalChecks)
-	}
-	if len(values) > 0 {
-		var total int64
-		for _, value := range values {
-			total += value
-		}
-		summary.AverageResponseMS = float64(total) / float64(len(values))
-		sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
-		index := int(math.Ceil(float64(len(values))*0.95)) - 1
-		summary.P95ResponseMS = values[index]
-	}
+func summarizeIncidents(incidents []incident.Incident, from, now time.Time) (int, int64) {
+	count, downtime := 0, int64(0)
 	for _, item := range incidents {
 		end := now
 		if item.EndedAt != nil {
 			end = *item.EndedAt
 		}
 		if end.After(from) && item.StartedAt.Before(now) {
-			summary.IncidentCount++
+			count++
 			start := item.StartedAt
 			if start.Before(from) {
 				start = from
@@ -158,10 +142,10 @@ func summarizeMonitoring(checks []monitoring.Result, incidents []incident.Incide
 			if end.After(now) {
 				end = now
 			}
-			summary.DowntimeSeconds += int64(end.Sub(start).Seconds())
+			downtime += int64(end.Sub(start).Seconds())
 		}
 	}
-	return summary
+	return count, downtime
 }
 
 func (handler *handler) checkHistory(writer http.ResponseWriter, request *http.Request) {

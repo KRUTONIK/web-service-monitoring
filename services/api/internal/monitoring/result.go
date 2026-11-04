@@ -24,11 +24,12 @@ type History struct {
 }
 
 type Summary struct {
-	TotalChecks       int64   `json:"total_checks"`
-	SuccessfulChecks  int64   `json:"successful_checks"`
-	SuccessRate       float64 `json:"success_rate"`
-	AverageResponseMS float64 `json:"average_response_ms,omitempty"`
-	P95ResponseMS     int64   `json:"p95_response_ms,omitempty"`
-	IncidentCount     int     `json:"incident_count"`
-	DowntimeSeconds   int64   `json:"downtime_seconds"`
+	TotalChecks        int64   `json:"total_checks"`
+	SuccessfulChecks   int64   `json:"successful_checks"`
+	SuccessRate        float64 `json:"success_rate"`
+	AverageResponseMS  float64 `json:"average_response_ms,omitempty"`
+	P95ResponseMS      int64   `json:"p95_response_ms,omitempty"`
+	HasResponseMetrics bool    `json:"has_response_metrics"`
+	IncidentCount      int     `json:"incident_count"`
+	DowntimeSeconds    int64   `json:"downtime_seconds"`
 }

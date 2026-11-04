@@ -23,6 +23,7 @@ const testOrigin = "http://localhost:5173"
 type stubCheckReader struct {
 	result           monitoring.Result
 	history          monitoring.History
+	summary          monitoring.Summary
 	err              error
 	requestedService string
 }
@@ -36,6 +37,20 @@ func (stub *stubCheckReader) History(_ context.Context, serviceID string, _ time
 	stub.requestedService = serviceID
 	stub.history.Limit, stub.history.Offset = limit, offset
 	return stub.history, stub.err
+}
+
+func (stub *stubCheckReader) Summary(_ context.Context, _ string, _ time.Time) (monitoring.Summary, error) {
+	return stub.summary, stub.err
+}
+
+func TestSummarizeIncidentsClipsPeriodBoundaries(t *testing.T) {
+	from := time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC)
+	now := from.Add(time.Hour)
+	ended := from.Add(10 * time.Minute)
+	count, downtime := summarizeIncidents([]incident.Incident{{StartedAt: from.Add(-time.Hour), EndedAt: &ended}, {StartedAt: now.Add(-5 * time.Minute)}}, from, now)
+	if count != 2 || downtime != 15*60 {
+		t.Fatalf("unexpected count=%d downtime=%d", count, downtime)
+	}
 }
 
 type stubAuthentication struct {
