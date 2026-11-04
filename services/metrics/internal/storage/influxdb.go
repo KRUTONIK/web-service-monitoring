@@ -64,6 +64,39 @@ func (influx *InfluxDB) Latest(ctx context.Context, serviceID string) (metric.Re
 	return result, nil
 }
 
+// History returns checks in reverse chronological order.  The time range and
+// page bounds are supplied by the API service and never inferred from input.
+func (influx *InfluxDB) History(ctx context.Context, serviceID string, from time.Time, limit, offset int) ([]metric.Result, error) {
+	endpoint, err := url.Parse(influx.baseURL + "/api/v2/query")
+	if err != nil {
+		return nil, fmt.Errorf("parse InfluxDB URL: %w", err)
+	}
+	query := endpoint.Query()
+	query.Set("org", influx.org)
+	endpoint.RawQuery = query.Encode()
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewBufferString(influx.historyQuery(serviceID, from, limit, offset)))
+	if err != nil {
+		return nil, fmt.Errorf("create InfluxDB query request: %w", err)
+	}
+	request.Header.Set("Authorization", "Token "+influx.token)
+	request.Header.Set("Accept", "application/csv")
+	request.Header.Set("Content-Type", "application/vnd.flux")
+	response, err := influx.client.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("query InfluxDB: %w", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 1024))
+		return nil, fmt.Errorf("InfluxDB returned %s: %s", response.Status, strings.TrimSpace(string(body)))
+	}
+	results, err := parseResults(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("parse InfluxDB response: %w", err)
+	}
+	return results, nil
+}
+
 func (influx *InfluxDB) latestQuery(serviceID string) string {
 	serviceFilter := ""
 	if serviceID != "" {
@@ -79,10 +112,32 @@ func (influx *InfluxDB) latestQuery(serviceID string) string {
   |> limit(n: 1)`, escapeFluxString(influx.bucket), serviceFilter)
 }
 
+func (influx *InfluxDB) historyQuery(serviceID string, from time.Time, limit, offset int) string {
+	return fmt.Sprintf(`from(bucket: "%s")
+  |> range(start: %s)
+  |> filter(fn: (r) => r._measurement == "service_check")
+  |> filter(fn: (r) => r.service_id == "%s")
+  |> pivot(rowKey: ["_time", "job_id", "service_id", "service_url"], columnKey: ["_field"], valueColumn: "_value")
+  |> group()
+  |> sort(columns: ["_time"], desc: true)
+  |> limit(n: %d, offset: %d)`, escapeFluxString(influx.bucket), from.UTC().Format(time.RFC3339Nano), escapeFluxString(serviceID), limit, offset)
+}
+
 func parseLatestResult(reader io.Reader) (metric.Result, error) {
-	content, err := io.ReadAll(reader)
+	results, err := parseResults(reader)
 	if err != nil {
 		return metric.Result{}, err
+	}
+	if len(results) == 0 {
+		return metric.Result{}, ErrNotFound
+	}
+	return results[0], nil
+}
+
+func parseResults(reader io.Reader) ([]metric.Result, error) {
+	content, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
 	}
 	lines := strings.Split(string(content), "\n")
 	dataLines := make([]string, 0, len(lines))
@@ -92,44 +147,43 @@ func parseLatestResult(reader io.Reader) (metric.Result, error) {
 		}
 	}
 	if len(dataLines) < 2 {
-		return metric.Result{}, ErrNotFound
+		return []metric.Result{}, nil
 	}
 
 	records, err := csv.NewReader(strings.NewReader(strings.Join(dataLines, "\n"))).ReadAll()
 	if err != nil {
-		return metric.Result{}, err
+		return nil, err
 	}
 	if len(records) < 2 {
-		return metric.Result{}, ErrNotFound
+		return []metric.Result{}, nil
 	}
-	values := make(map[string]string, len(records[0]))
-	for index, column := range records[0] {
-		if index < len(records[1]) {
-			values[column] = records[1][index]
+	results := make([]metric.Result, 0, len(records)-1)
+	for _, record := range records[1:] {
+		values := make(map[string]string, len(records[0]))
+		for index, column := range records[0] {
+			if index < len(record) {
+				values[column] = record[index]
+			}
 		}
+		checkedAt, err := time.Parse(time.RFC3339Nano, values["_time"])
+		if err != nil {
+			return nil, fmt.Errorf("parse check time: %w", err)
+		}
+		available, err := strconv.ParseBool(values["available"])
+		if err != nil {
+			return nil, fmt.Errorf("parse availability: %w", err)
+		}
+		statusCode, err := strconv.Atoi(values["status_code"])
+		if err != nil {
+			return nil, fmt.Errorf("parse status code: %w", err)
+		}
+		responseTime, err := strconv.ParseInt(values["response_time_ms"], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("parse response time: %w", err)
+		}
+		results = append(results, metric.Result{ServiceID: values["service_id"], ServiceURL: values["service_url"], CheckedAt: checkedAt, Available: available, StatusCode: statusCode, ResponseTimeMS: responseTime, Error: values["error"]})
 	}
-
-	checkedAt, err := time.Parse(time.RFC3339Nano, values["_time"])
-	if err != nil {
-		return metric.Result{}, fmt.Errorf("parse check time: %w", err)
-	}
-	available, err := strconv.ParseBool(values["available"])
-	if err != nil {
-		return metric.Result{}, fmt.Errorf("parse availability: %w", err)
-	}
-	statusCode, err := strconv.Atoi(values["status_code"])
-	if err != nil {
-		return metric.Result{}, fmt.Errorf("parse status code: %w", err)
-	}
-	responseTime, err := strconv.ParseInt(values["response_time_ms"], 10, 64)
-	if err != nil {
-		return metric.Result{}, fmt.Errorf("parse response time: %w", err)
-	}
-
-	return metric.Result{
-		ServiceID: values["service_id"], ServiceURL: values["service_url"], CheckedAt: checkedAt, Available: available,
-		StatusCode: statusCode, ResponseTimeMS: responseTime, Error: values["error"],
-	}, nil
+	return results, nil
 }
 
 func escapeFluxString(value string) string {

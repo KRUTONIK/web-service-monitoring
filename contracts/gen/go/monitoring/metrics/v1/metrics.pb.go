@@ -158,6 +158,210 @@ func (x *GetLatestCheckResponse) GetServiceId() string {
 	return ""
 }
 
+type GetCheckHistoryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServiceId     string                 `protobuf:"bytes,1,opt,name=service_id,json=serviceId,proto3" json:"service_id,omitempty"`
+	From          *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=from,proto3" json:"from,omitempty"`
+	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset        int32                  `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCheckHistoryRequest) Reset() {
+	*x = GetCheckHistoryRequest{}
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCheckHistoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCheckHistoryRequest) ProtoMessage() {}
+
+func (x *GetCheckHistoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCheckHistoryRequest.ProtoReflect.Descriptor instead.
+func (*GetCheckHistoryRequest) Descriptor() ([]byte, []int) {
+	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *GetCheckHistoryRequest) GetServiceId() string {
+	if x != nil {
+		return x.ServiceId
+	}
+	return ""
+}
+
+func (x *GetCheckHistoryRequest) GetFrom() *timestamppb.Timestamp {
+	if x != nil {
+		return x.From
+	}
+	return nil
+}
+
+func (x *GetCheckHistoryRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *GetCheckHistoryRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+type CheckResult struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ServiceUrl     string                 `protobuf:"bytes,1,opt,name=service_url,json=serviceUrl,proto3" json:"service_url,omitempty"`
+	CheckedAt      *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=checked_at,json=checkedAt,proto3" json:"checked_at,omitempty"`
+	Available      bool                   `protobuf:"varint,3,opt,name=available,proto3" json:"available,omitempty"`
+	StatusCode     int32                  `protobuf:"varint,4,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	ResponseTimeMs int64                  `protobuf:"varint,5,opt,name=response_time_ms,json=responseTimeMs,proto3" json:"response_time_ms,omitempty"`
+	Error          string                 `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`
+	ServiceId      string                 `protobuf:"bytes,7,opt,name=service_id,json=serviceId,proto3" json:"service_id,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *CheckResult) Reset() {
+	*x = CheckResult{}
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckResult) ProtoMessage() {}
+
+func (x *CheckResult) ProtoReflect() protoreflect.Message {
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckResult.ProtoReflect.Descriptor instead.
+func (*CheckResult) Descriptor() ([]byte, []int) {
+	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *CheckResult) GetServiceUrl() string {
+	if x != nil {
+		return x.ServiceUrl
+	}
+	return ""
+}
+
+func (x *CheckResult) GetCheckedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CheckedAt
+	}
+	return nil
+}
+
+func (x *CheckResult) GetAvailable() bool {
+	if x != nil {
+		return x.Available
+	}
+	return false
+}
+
+func (x *CheckResult) GetStatusCode() int32 {
+	if x != nil {
+		return x.StatusCode
+	}
+	return 0
+}
+
+func (x *CheckResult) GetResponseTimeMs() int64 {
+	if x != nil {
+		return x.ResponseTimeMs
+	}
+	return 0
+}
+
+func (x *CheckResult) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *CheckResult) GetServiceId() string {
+	if x != nil {
+		return x.ServiceId
+	}
+	return ""
+}
+
+type GetCheckHistoryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Checks        []*CheckResult         `protobuf:"bytes,1,rep,name=checks,proto3" json:"checks,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCheckHistoryResponse) Reset() {
+	*x = GetCheckHistoryResponse{}
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCheckHistoryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCheckHistoryResponse) ProtoMessage() {}
+
+func (x *GetCheckHistoryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCheckHistoryResponse.ProtoReflect.Descriptor instead.
+func (*GetCheckHistoryResponse) Descriptor() ([]byte, []int) {
+	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GetCheckHistoryResponse) GetChecks() []*CheckResult {
+	if x != nil {
+		return x.Checks
+	}
+	return nil
+}
+
 var File_monitoring_metrics_v1_metrics_proto protoreflect.FileDescriptor
 
 const file_monitoring_metrics_v1_metrics_proto_rawDesc = "" +
@@ -177,9 +381,30 @@ const file_monitoring_metrics_v1_metrics_proto_rawDesc = "" +
 	"\x10response_time_ms\x18\x05 \x01(\x03R\x0eresponseTimeMs\x12\x14\n" +
 	"\x05error\x18\x06 \x01(\tR\x05error\x12\x1d\n" +
 	"\n" +
-	"service_id\x18\a \x01(\tR\tserviceId2\x7f\n" +
+	"service_id\x18\a \x01(\tR\tserviceId\"\x95\x01\n" +
+	"\x16GetCheckHistoryRequest\x12\x1d\n" +
+	"\n" +
+	"service_id\x18\x01 \x01(\tR\tserviceId\x12.\n" +
+	"\x04from\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x04from\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x04 \x01(\x05R\x06offset\"\x87\x02\n" +
+	"\vCheckResult\x12\x1f\n" +
+	"\vservice_url\x18\x01 \x01(\tR\n" +
+	"serviceUrl\x129\n" +
+	"\n" +
+	"checked_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tcheckedAt\x12\x1c\n" +
+	"\tavailable\x18\x03 \x01(\bR\tavailable\x12\x1f\n" +
+	"\vstatus_code\x18\x04 \x01(\x05R\n" +
+	"statusCode\x12(\n" +
+	"\x10response_time_ms\x18\x05 \x01(\x03R\x0eresponseTimeMs\x12\x14\n" +
+	"\x05error\x18\x06 \x01(\tR\x05error\x12\x1d\n" +
+	"\n" +
+	"service_id\x18\a \x01(\tR\tserviceId\"U\n" +
+	"\x17GetCheckHistoryResponse\x12:\n" +
+	"\x06checks\x18\x01 \x03(\v2\".monitoring.metrics.v1.CheckResultR\x06checks2\xf1\x01\n" +
 	"\x0eMetricsService\x12m\n" +
-	"\x0eGetLatestCheck\x12,.monitoring.metrics.v1.GetLatestCheckRequest\x1a-.monitoring.metrics.v1.GetLatestCheckResponseB]Z[github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/metrics/v1;metricsv1b\x06proto3"
+	"\x0eGetLatestCheck\x12,.monitoring.metrics.v1.GetLatestCheckRequest\x1a-.monitoring.metrics.v1.GetLatestCheckResponse\x12p\n" +
+	"\x0fGetCheckHistory\x12-.monitoring.metrics.v1.GetCheckHistoryRequest\x1a..monitoring.metrics.v1.GetCheckHistoryResponseB]Z[github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/metrics/v1;metricsv1b\x06proto3"
 
 var (
 	file_monitoring_metrics_v1_metrics_proto_rawDescOnce sync.Once
@@ -193,21 +418,29 @@ func file_monitoring_metrics_v1_metrics_proto_rawDescGZIP() []byte {
 	return file_monitoring_metrics_v1_metrics_proto_rawDescData
 }
 
-var file_monitoring_metrics_v1_metrics_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_monitoring_metrics_v1_metrics_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_monitoring_metrics_v1_metrics_proto_goTypes = []any{
-	(*GetLatestCheckRequest)(nil),  // 0: monitoring.metrics.v1.GetLatestCheckRequest
-	(*GetLatestCheckResponse)(nil), // 1: monitoring.metrics.v1.GetLatestCheckResponse
-	(*timestamppb.Timestamp)(nil),  // 2: google.protobuf.Timestamp
+	(*GetLatestCheckRequest)(nil),   // 0: monitoring.metrics.v1.GetLatestCheckRequest
+	(*GetLatestCheckResponse)(nil),  // 1: monitoring.metrics.v1.GetLatestCheckResponse
+	(*GetCheckHistoryRequest)(nil),  // 2: monitoring.metrics.v1.GetCheckHistoryRequest
+	(*CheckResult)(nil),             // 3: monitoring.metrics.v1.CheckResult
+	(*GetCheckHistoryResponse)(nil), // 4: monitoring.metrics.v1.GetCheckHistoryResponse
+	(*timestamppb.Timestamp)(nil),   // 5: google.protobuf.Timestamp
 }
 var file_monitoring_metrics_v1_metrics_proto_depIdxs = []int32{
-	2, // 0: monitoring.metrics.v1.GetLatestCheckResponse.checked_at:type_name -> google.protobuf.Timestamp
-	0, // 1: monitoring.metrics.v1.MetricsService.GetLatestCheck:input_type -> monitoring.metrics.v1.GetLatestCheckRequest
-	1, // 2: monitoring.metrics.v1.MetricsService.GetLatestCheck:output_type -> monitoring.metrics.v1.GetLatestCheckResponse
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	5, // 0: monitoring.metrics.v1.GetLatestCheckResponse.checked_at:type_name -> google.protobuf.Timestamp
+	5, // 1: monitoring.metrics.v1.GetCheckHistoryRequest.from:type_name -> google.protobuf.Timestamp
+	5, // 2: monitoring.metrics.v1.CheckResult.checked_at:type_name -> google.protobuf.Timestamp
+	3, // 3: monitoring.metrics.v1.GetCheckHistoryResponse.checks:type_name -> monitoring.metrics.v1.CheckResult
+	0, // 4: monitoring.metrics.v1.MetricsService.GetLatestCheck:input_type -> monitoring.metrics.v1.GetLatestCheckRequest
+	2, // 5: monitoring.metrics.v1.MetricsService.GetCheckHistory:input_type -> monitoring.metrics.v1.GetCheckHistoryRequest
+	1, // 6: monitoring.metrics.v1.MetricsService.GetLatestCheck:output_type -> monitoring.metrics.v1.GetLatestCheckResponse
+	4, // 7: monitoring.metrics.v1.MetricsService.GetCheckHistory:output_type -> monitoring.metrics.v1.GetCheckHistoryResponse
+	6, // [6:8] is the sub-list for method output_type
+	4, // [4:6] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_monitoring_metrics_v1_metrics_proto_init() }
@@ -221,7 +454,7 @@ func file_monitoring_metrics_v1_metrics_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_monitoring_metrics_v1_metrics_proto_rawDesc), len(file_monitoring_metrics_v1_metrics_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

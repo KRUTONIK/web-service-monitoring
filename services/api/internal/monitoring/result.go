@@ -16,3 +16,9 @@ type Result struct {
 	ResponseTimeMS int64     `json:"response_time_ms"`
 	Error          string    `json:"error,omitempty"`
 }
+
+type History struct {
+	Checks []Result `json:"checks"`
+	Limit  int      `json:"limit"`
+	Offset int      `json:"offset"`
+}

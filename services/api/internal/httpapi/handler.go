@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 
 type checkReader interface {
 	Latest(context.Context, string) (monitoring.Result, error)
+	History(context.Context, string, time.Time, int, int) (monitoring.History, error)
 }
 
 type authentication interface {
@@ -68,8 +70,65 @@ func New(checks checkReader, authService authentication, sessions *scs.SessionMa
 	mux.HandleFunc("DELETE /api/services/{id}", handler.deleteService)
 	mux.HandleFunc("GET /api/checks/latest", handler.latestCheck)
 	mux.HandleFunc("GET /api/services/{id}/status", handler.serviceStatus)
+	mux.HandleFunc("GET /api/services/{id}/checks", handler.checkHistory)
 	mux.HandleFunc("GET /api/services/{id}/incidents", handler.listIncidents)
 	return handler.allowCORS(mux)
+}
+
+func (handler *handler) checkHistory(writer http.ResponseWriter, request *http.Request) {
+	currentUser, ok := handler.currentUser(writer, request)
+	if !ok {
+		return
+	}
+	service, err := handler.services.ByIDAndOwner(request.Context(), currentUser.ID, request.PathValue("id"))
+	if errors.Is(err, serviceconfig.ErrNotFound) {
+		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "Сервис не найден"})
+		return
+	}
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось проверить доступ к сервису"})
+		return
+	}
+	periods := map[string]time.Duration{"24h": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30d": 30 * 24 * time.Hour}
+	period := request.URL.Query().Get("period")
+	if period == "" {
+		period = "24h"
+	}
+	duration, valid := periods[period]
+	if !valid {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Недопустимый период истории"})
+		return
+	}
+	limit, offset, valid := historyPage(request.URL.Query())
+	if !valid {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Некорректная пагинация"})
+		return
+	}
+	history, err := handler.checks.History(request.Context(), service.ID, time.Now().UTC().Add(-duration), limit, offset)
+	if err != nil {
+		writeJSON(writer, http.StatusBadGateway, map[string]string{"error": "Не удалось получить историю проверок"})
+		return
+	}
+	writeJSON(writer, http.StatusOK, history)
+}
+
+func historyPage(query url.Values) (int, int, bool) {
+	limit, offset := 100, 0
+	if value := query.Get("limit"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > 500 {
+			return 0, 0, false
+		}
+		limit = parsed
+	}
+	if value := query.Get("offset"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 0 {
+			return 0, 0, false
+		}
+		offset = parsed
+	}
+	return limit, offset, true
 }
 
 func (handler *handler) listIncidents(writer http.ResponseWriter, request *http.Request) {

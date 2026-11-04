@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type MetricsClient struct {
@@ -45,4 +46,18 @@ func (client *MetricsClient) Latest(ctx context.Context, serviceID string) (moni
 		ServiceID: response.ServiceId, ServiceURL: response.ServiceUrl, CheckedAt: response.CheckedAt.AsTime(), Available: response.Available,
 		StatusCode: int(response.StatusCode), ResponseTimeMS: response.ResponseTimeMs, Error: response.Error,
 	}, nil
+}
+
+func (client *MetricsClient) History(ctx context.Context, serviceID string, from time.Time, limit, offset int) (monitoring.History, error) {
+	requestContext, cancel := context.WithTimeout(ctx, client.timeout)
+	defer cancel()
+	response, err := client.client.GetCheckHistory(requestContext, &metricsv1.GetCheckHistoryRequest{ServiceId: serviceID, From: timestamppb.New(from), Limit: int32(limit), Offset: int32(offset)})
+	if err != nil {
+		return monitoring.History{}, fmt.Errorf("request check history: %w", err)
+	}
+	checks := make([]monitoring.Result, 0, len(response.Checks))
+	for _, check := range response.Checks {
+		checks = append(checks, monitoring.Result{ServiceID: check.ServiceId, ServiceURL: check.ServiceUrl, CheckedAt: check.CheckedAt.AsTime(), Available: check.Available, StatusCode: int(check.StatusCode), ResponseTimeMS: check.ResponseTimeMs, Error: check.Error})
+	}
+	return monitoring.History{Checks: checks, Limit: limit, Offset: offset}, nil
 }

@@ -8,6 +8,7 @@ option go_package = "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go
 
 service MetricsService {
   rpc GetLatestCheck(GetLatestCheckRequest) returns (GetLatestCheckResponse);
+  rpc GetCheckHistory(GetCheckHistoryRequest) returns (GetCheckHistoryResponse);
 }
 
 message GetLatestCheckRequest {
@@ -22,4 +23,25 @@ message GetLatestCheckResponse {
   int64 response_time_ms = 5;
   string error = 6;
   string service_id = 7;
+}
+
+message GetCheckHistoryRequest {
+  string service_id = 1;
+  google.protobuf.Timestamp from = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message CheckResult {
+  string service_url = 1;
+  google.protobuf.Timestamp checked_at = 2;
+  bool available = 3;
+  int32 status_code = 4;
+  int64 response_time_ms = 5;
+  string error = 6;
+  string service_id = 7;
+}
+
+message GetCheckHistoryResponse {
+  repeated CheckResult checks = 1;
 }
