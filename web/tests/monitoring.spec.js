@@ -42,6 +42,14 @@ function serviceStatus(overrides = {}) {
   return { state: 'available', current: true, last_check: checkResult(), ...overrides }
 }
 
+function statusResponseTime(page, value) {
+  return page.getByText('Время ответа', { exact: true }).locator('..').getByText(value, { exact: true })
+}
+
+function statusCheckTime(page) {
+  return page.getByText('Время проверки', { exact: true }).locator('..').getByText(/01\.11\.2026/)
+}
+
 async function mockDashboard(page, { services = [service], status = serviceStatus(), statusCode = 200, statusHandler, incidents = [], checks = [checkResult()], checksHandler } = {}) {
   let created = false
   const createdService = { ...service, id: 'service-2', name: 'Тестовый сервис', url: 'https://new.example' }
@@ -88,8 +96,8 @@ test('показывает сервис и актуальное состояни
   await page.goto('/')
 	await expect(page.getByRole('heading', { name: 'Основной сайт' })).toBeVisible()
   await expect(page.getByText('Доступен')).toBeVisible()
-  await expect(page.getByText('42 мс')).toBeVisible()
-  await expect(page.getByText(/01\.11\.2026/)).toBeVisible()
+  await expect(statusResponseTime(page, '42 мс')).toBeVisible()
+  await expect(statusCheckTime(page)).toBeVisible()
 })
 
 test('показывает историю и запрашивает выбранный период', async ({ page }) => {
@@ -182,7 +190,7 @@ test('показывает недоступность сервиса и дета
   await page.goto('/')
   await expect(page.getByText('Недоступен', { exact: true })).toBeVisible()
   await expect(page.getByText('503')).toBeVisible()
-  await expect(page.getByText('215 мс')).toBeVisible()
+  await expect(statusResponseTime(page, '215 мс')).toBeVisible()
   await expect(page.getByText('Сервис временно недоступен')).toBeVisible()
 })
 
@@ -195,9 +203,9 @@ test('обновляет состояние вручную без перезаг
     },
   })
   await page.goto('/')
-  await expect(page.getByText('42 мс')).toBeVisible()
+  await expect(statusResponseTime(page, '42 мс')).toBeVisible()
   await page.getByRole('button', { name: 'Обновить' }).click()
-  await expect(page.getByText('87 мс')).toBeVisible()
+  await expect(statusResponseTime(page, '87 мс')).toBeVisible()
   expect(requests).toBe(2)
 })
 
@@ -223,7 +231,7 @@ test('показывает устаревший результат как неа
   await page.goto('/')
   await expect(page.getByText('Нет актуальных данных')).toBeVisible()
   await expect(page.getByText('Показан последний известный результат.')).toBeVisible()
-  await expect(page.getByText('42 мс')).toBeVisible()
+  await expect(statusResponseTime(page, '42 мс')).toBeVisible()
 })
 
 test('показывает отключённый мониторинг', async ({ page }) => {
@@ -242,9 +250,9 @@ test('обновляет состояние автоматически чере�
     },
   })
   await page.goto('/')
-  await expect(page.getByText('42 мс')).toBeVisible()
+  await expect(statusResponseTime(page, '42 мс')).toBeVisible()
   await page.clock.fastForward(10_000)
-  await expect(page.getByText('64 мс')).toBeVisible()
+  await expect(statusResponseTime(page, '64 мс')).toBeVisible()
   expect(requests).toBe(2)
 })
 
@@ -258,10 +266,10 @@ test('при переключении сервиса показывает тол
     },
   })
   await page.goto('/')
-  await expect(page.getByText('42 мс')).toBeVisible()
+  await expect(statusResponseTime(page, '42 мс')).toBeVisible()
   await page.getByRole('textbox', { name: 'Выбранный сервис' }).click()
   await page.getByRole('option', { name: 'Второй сайт', exact: true }).click()
-  await expect(page.getByText('99 мс')).toBeVisible()
+  await expect(statusResponseTime(page, '99 мс')).toBeVisible()
   await expect(page.getByText('Недоступен', { exact: true })).toBeVisible()
 })
 
