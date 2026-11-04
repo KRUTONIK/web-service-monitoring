@@ -12,6 +12,7 @@ import (
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/database"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/grpcapi"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/httpapi"
+	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/incident"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/messaging"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/serviceconfig"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/session"
@@ -32,6 +33,7 @@ func main() {
 		}
 	}()
 	configRepository := serviceconfig.New(postgres)
+	incidentRepository := incident.New(postgres)
 	sessions, err := session.New(postgres, cfg.CookieSecure)
 	if err != nil {
 		log.Fatalf("initialize sessions: %v", err)
@@ -52,6 +54,16 @@ func main() {
 	if err := configBroker.PublishCurrentConfiguration(ctx); err != nil {
 		log.Fatalf("publish prototype configuration: %v", err)
 	}
+	incidentConsumer, err := messaging.OpenIncidentConsumer(cfg.RabbitMQURL, incidentRepository)
+	if err != nil {
+		log.Fatalf("initialize incident messaging: %v", err)
+	}
+	defer func() { _ = incidentConsumer.Close() }()
+	go func() {
+		if err := incidentConsumer.Consume(ctx); err != nil {
+			log.Printf("consume incident events: %v", err)
+		}
+	}()
 	metricsClient, err := grpcapi.OpenMetricsClient(cfg.MetricsTarget, cfg.RequestTimeout)
 	if err != nil {
 		log.Fatalf("initialize Metrics Service client: %v", err)
@@ -77,7 +89,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:              cfg.ListenAddress,
-		Handler:           sessions.LoadAndSave(httpapi.New(metricsClient, authService, sessions, configRepository, configBroker, cfg.WebOrigin)),
+		Handler:           sessions.LoadAndSave(httpapi.New(metricsClient, authService, sessions, configRepository, incidentRepository, configBroker, cfg.WebOrigin)),
 		ReadHeaderTimeout: cfg.RequestTimeout,
 	}
 

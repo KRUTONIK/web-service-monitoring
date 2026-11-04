@@ -305,7 +305,9 @@ node -e 'if (!JSON.parse(process.argv[1]).routed) process.exit(1)' "$routed" || 
 wait_for_queue_value checker.jobs.dlq messages 1 80
 "${COMPOSE[@]}" start influxdb >/dev/null
 wait_for_influxdb
+prototype_jobs_before_restart=$(influx_job_count prototype-service http://test-service)
 "${COMPOSE[@]}" start scheduler >/dev/null
+wait_for_job_count prototype-service "$((prototype_jobs_before_restart + 1))" http://test-service
 
 echo "Проверка версионных обновлений конфигурации..."
 sync_before=$(scheduler_sync_count)

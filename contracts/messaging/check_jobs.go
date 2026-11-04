@@ -6,5 +6,6 @@ const (
 	CheckRetryQueue     = "checker.jobs.retry"
 	CheckJobsDLQ        = "checker.jobs.dlq"
 	CheckRetryRoute     = "retry"
+	IncidentEventsQueue = "incidents.events"
 	MaxCheckJobAttempts = 3
 )

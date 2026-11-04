@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/auth"
+	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/incident"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/monitoring"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/serviceconfig"
 	"github.com/KRUTONIK/web-service-monitoring/services/api/internal/user"
@@ -39,18 +40,22 @@ type serviceRepository interface {
 type configurationPublisher interface {
 	Publish(context.Context, serviceconfig.Update) error
 }
+type incidentRepository interface {
+	ListByService(context.Context, string) ([]incident.Incident, error)
+}
 
 type handler struct {
 	checks    checkReader
 	auth      authentication
 	sessions  *scs.SessionManager
 	services  serviceRepository
+	incidents incidentRepository
 	publisher configurationPublisher
 	origin    string
 }
 
-func New(checks checkReader, authService authentication, sessions *scs.SessionManager, services serviceRepository, publisher configurationPublisher, origin string) http.Handler {
-	handler := &handler{checks: checks, auth: authService, sessions: sessions, services: services, publisher: publisher, origin: origin}
+func New(checks checkReader, authService authentication, sessions *scs.SessionManager, services serviceRepository, incidents incidentRepository, publisher configurationPublisher, origin string) http.Handler {
+	handler := &handler{checks: checks, auth: authService, sessions: sessions, services: services, incidents: incidents, publisher: publisher, origin: origin}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", handler.health)
 	mux.HandleFunc("POST /api/auth/register", handler.register)
@@ -63,7 +68,30 @@ func New(checks checkReader, authService authentication, sessions *scs.SessionMa
 	mux.HandleFunc("DELETE /api/services/{id}", handler.deleteService)
 	mux.HandleFunc("GET /api/checks/latest", handler.latestCheck)
 	mux.HandleFunc("GET /api/services/{id}/status", handler.serviceStatus)
+	mux.HandleFunc("GET /api/services/{id}/incidents", handler.listIncidents)
 	return handler.allowCORS(mux)
+}
+
+func (handler *handler) listIncidents(writer http.ResponseWriter, request *http.Request) {
+	currentUser, ok := handler.currentUser(writer, request)
+	if !ok {
+		return
+	}
+	service, err := handler.services.ByIDAndOwner(request.Context(), currentUser.ID, request.PathValue("id"))
+	if errors.Is(err, serviceconfig.ErrNotFound) {
+		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "Сервис не найден"})
+		return
+	}
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось проверить доступ к сервису"})
+		return
+	}
+	values, err := handler.incidents.ListByService(request.Context(), service.ID)
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось получить историю инцидентов"})
+		return
+	}
+	writeJSON(writer, http.StatusOK, values)
 }
 
 type credentials struct {

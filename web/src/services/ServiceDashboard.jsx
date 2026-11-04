@@ -56,6 +56,13 @@ export function ServiceDashboard() {
     retry: false,
     refetchInterval: 10_000,
   })
+  const incidentsQuery = useQuery({
+    queryKey: ['incidents', currentServiceID],
+    queryFn: () => apiRequest(`/api/services/${currentServiceID}/incidents`),
+    enabled: Boolean(currentServiceID),
+    retry: false,
+	refetchInterval: 10_000,
+  })
 
   if (servicesQuery.isPending) return <Loader />
   if (servicesQuery.isError) return <Alert color="red">{servicesQuery.error.message}</Alert>
@@ -99,6 +106,7 @@ export function ServiceDashboard() {
       )}
 
       {selectedService && <ServiceStatus query={statusQuery} />}
+      {selectedService && <Incidents query={incidentsQuery} />}
 
       <Modal opened={creating} onClose={() => setCreating(false)} title="Новый сервис">
         {createMutation.error && <Alert mb="sm" color="red">{createMutation.error.message}</Alert>}
@@ -110,6 +118,19 @@ export function ServiceDashboard() {
       </Modal>
     </Stack>
   )
+}
+
+function Incidents({ query }) {
+  if (query.isPending) return <Card withBorder><Text c="dimmed">Загрузка инцидентов…</Text></Card>
+  if (query.isError) return <Alert color="red">{query.error.message}</Alert>
+  const incidents = query.data
+  if (incidents.length === 0) return <Card withBorder><Text c="dimmed">Инцидентов пока не было.</Text></Card>
+  const duration = (incident) => {
+    if (!incident.ended_at) return 'Продолжается'
+    const seconds = Math.max(0, Math.round((new Date(incident.ended_at) - new Date(incident.started_at)) / 1000))
+    return `${seconds} с`
+  }
+  return <Card withBorder><Stack gap="sm"><Title order={3}>Инциденты</Title>{incidents.map((incident) => <div key={incident.id}><Group justify="space-between"><Text fw={600}>{incident.ended_at ? 'Завершённый сбой' : 'Текущий сбой'}</Text><Badge color={incident.ended_at ? 'gray' : 'red'}>{duration(incident)}</Badge></Group><Text size="sm" c="dimmed">Начало: {formatDate(incident.started_at)}</Text>{incident.ended_at && <Text size="sm" c="dimmed">Завершение: {formatDate(incident.ended_at)}</Text>}</div>)}</Stack></Card>
 }
 
 function ServiceStatus({ query }) {
