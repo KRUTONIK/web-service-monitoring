@@ -42,7 +42,7 @@ function serviceStatus(overrides = {}) {
   return { state: 'available', current: true, last_check: checkResult(), ...overrides }
 }
 
-async function mockDashboard(page, { services = [service], status = serviceStatus(), statusCode = 200, statusHandler } = {}) {
+async function mockDashboard(page, { services = [service], status = serviceStatus(), statusCode = 200, statusHandler, incidents = [] } = {}) {
   let created = false
   const createdService = { ...service, id: 'service-2', name: 'Тестовый сервис', url: 'https://new.example' }
   await page.route('**/api/auth/me', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(user) }))
@@ -56,7 +56,7 @@ async function mockDashboard(page, { services = [service], status = serviceStatu
     if (statusHandler) return statusHandler(route)
     return route.fulfill({ status: statusCode, contentType: 'application/json', body: JSON.stringify(status) })
   })
-  await page.route('**/api/services/*/incidents', (route) => route.fulfill({ contentType: 'application/json', body: '[]' }))
+  await page.route('**/api/services/*/incidents', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(incidents) }))
 }
 
 test('показывает форму входа неавторизованному пользователю', async ({ page }) => {
@@ -159,6 +159,17 @@ test('показывает ошибку Metrics API', async ({ page }) => {
   await mockDashboard(page, { statusCode: 502, status: { error: 'Не удалось получить данные метрик' } })
   await page.goto('/')
   await expect(page.getByText('Не удалось получить данные метрик')).toBeVisible()
+})
+
+test('показывает открытый и завершённый инциденты', async ({ page }) => {
+  await mockDashboard(page, { incidents: [
+    { id: 'incident-open', service_id: service.id, started_at: '2026-11-01T10:00:00Z', ended_at: null },
+    { id: 'incident-closed', service_id: service.id, started_at: '2026-11-01T08:00:00Z', ended_at: '2026-11-01T08:01:30Z' },
+  ] })
+  await page.goto('/')
+  await expect(page.getByText('Текущий сбой')).toBeVisible()
+  await expect(page.getByText('Завершённый сбой')).toBeVisible()
+  await expect(page.getByText('90 с')).toBeVisible()
 })
 
 test('показывает устаревший результат как неактуальные данные', async ({ page }) => {

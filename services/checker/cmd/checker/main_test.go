@@ -18,7 +18,7 @@ type stubWriter struct {
 	err      error
 }
 
-func (stub *stubWriter) Latest(_ context.Context, _ string) (check.Result, error) {
+func (stub *stubWriter) LatestBefore(_ context.Context, _ string, _ time.Time) (check.Result, error) {
 	return stub.previous, stub.err
 }
 

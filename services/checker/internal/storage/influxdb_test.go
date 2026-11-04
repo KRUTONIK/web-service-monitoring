@@ -117,6 +117,32 @@ func TestRepeatedWriteUsesSameInfluxDBPoint(t *testing.T) {
 	}
 }
 
+func TestLatestBeforeUsesScheduledTimeAndFullHistory(t *testing.T) {
+	var query string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatalf("read query: %v", err)
+		}
+		query = string(body)
+		writer.Header().Set("Content-Type", "text/csv")
+		_, _ = writer.Write([]byte("_time,job_id,service_id,service_url,available,status_code,response_time_ms,error\n2026-10-01T00:00:00Z,older-job,service-1,http://service,true,200,12,\n"))
+	}))
+	defer server.Close()
+
+	before := time.Date(2026, time.November, 3, 12, 0, 0, 0, time.UTC)
+	result, err := NewInfluxDB(server.Client(), server.URL, "org", "bucket", "token").LatestBefore(context.Background(), "service-1", before)
+	if err != nil {
+		t.Fatalf("query previous result: %v", err)
+	}
+	if result.JobID != "older-job" || !result.CheckedAt.Before(before) {
+		t.Fatalf("unexpected previous result: %+v", result)
+	}
+	if !strings.Contains(query, "range(start: 0, stop: 2026-11-03T12:00:00Z)") || strings.Contains(query, "-24h") {
+		t.Fatalf("unexpected Flux query: %s", query)
+	}
+}
+
 func pointIdentity(line string) string {
 	parts := strings.Split(line, " ")
 	if len(parts) != 3 {

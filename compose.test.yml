@@ -1,13 +1,24 @@
 services:
   checker:
     restart: "no"
+    depends_on:
+      scheduler:
+        condition: service_healthy
 
   scheduler:
     environment:
       SCHEDULER_INTERVAL: 10s
       SCHEDULER_CONFIG_SYNC_INTERVAL: 2s
-      CHECKER_JOB_RETRY_DELAY: 1s
+      # Длиннее production-значения только для детерминированных integration tests:
+      # тест успевает проверить retry-очередь и восстановить Consumer до TTL.
+      CHECKER_JOB_RETRY_DELAY: 15s
       CHECKER_JOB_TTL: 1m
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -qO- http://monitoring:monitoring@rabbitmq:15672/api/queues/%2F/checker.jobs >/dev/null"]
+      interval: 1s
+      timeout: 1s
+      retries: 20
 
   slow-test-service:
     build:
