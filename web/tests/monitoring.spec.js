@@ -371,3 +371,19 @@ test('удаляет сервис из списка', async ({ page }) => {
   await expect(page.getByText('Сервисов пока нет. Добавьте первый сервис для мониторинга.')).toBeVisible()
   await expect(page.getByRole('heading', { name: service.name })).not.toBeVisible()
 })
+
+test('показывает 404 для неизвестного маршрута и сохраняет футер', async ({ page }) => {
+  await mockDashboard(page)
+  await page.goto('/unknown/path')
+  await expect(page.getByRole('heading', { name: 'Страница не найдена' })).toBeVisible()
+  await expect(page.getByText('Покладов Никита')).toBeVisible()
+  await page.getByRole('button', { name: 'К сервисам' }).click()
+  await expect(page).toHaveURL(/\/$/)
+})
+
+test('показывает 404 для недоступного сервиса', async ({ page }) => {
+  await mockDashboard(page)
+  await page.route('**/api/services/missing', (route) => route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'Сервис не найден' }) }))
+  await page.goto('/missing')
+  await expect(page.getByText('Страница не найдена или у вас нет доступа к этому сервису.')).toBeVisible()
+})

@@ -111,6 +111,10 @@ export function ServiceDashboard({ serviceID, onNavigate }) {
   if (overviewQuery.isPending && !detailMode) return <Loader />
 
   const selectedService = selectedServiceQuery.data
+  if (detailMode && selectedServiceQuery.isError) {
+    if (selectedServiceQuery.error.status === 404) return <Card withBorder><Stack align="center"><Title order={2}>Страница не найдена</Title><Text c="dimmed">Страница не найдена или у вас нет доступа к этому сервису.</Text><Button onClick={() => onNavigate('/')}>К сервисам</Button></Stack></Card>
+    return <Alert color="red">Не удалось загрузить сервис: {selectedServiceQuery.error.message}</Alert>
+  }
   return (
     <Stack gap="lg">
       {!detailMode && <Group justify="space-between">
