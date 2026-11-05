@@ -199,9 +199,7 @@ function MonitoringMetrics({ query }) {
 }
 
 function CheckHistory({ chartQuery, query, period, page, pageSize, onPeriodChange, onPageChange, onPageSizeChange }) {
-  if (query.isPending) return <Card withBorder><Text c="dimmed">Загрузка истории проверок…</Text></Card>
-  if (query.isError) return <Alert color="red">{query.error.message}</Alert>
-  const history = query.data
+  const history = query.data ?? { checks: [] }
   const checks = history.checks ?? []
   const pageChecks = checks.slice(0, pageSize)
   const hasNextPage = checks.length > pageSize
@@ -224,7 +222,7 @@ function CheckHistory({ chartQuery, query, period, page, pageSize, onPeriodChang
           </ResponsiveContainer>
         </div>
       </>}
-      {pageChecks.length === 0 ? <Text c="dimmed">За выбранный период проверок не было.</Text> : <>
+      {query.isError ? <Alert color="red">{query.error.message}</Alert> : query.isPending ? <Text c="dimmed">Загрузка истории проверок…</Text> : pageChecks.length === 0 ? <Text c="dimmed">За выбранный период проверок не было.</Text> : <>
         <Table striped highlightOnHover withTableBorder>
           <Table.Thead><Table.Tr><Table.Th>Дата и время</Table.Th><Table.Th>Доступность</Table.Th><Table.Th>HTTP-код</Table.Th><Table.Th>Время ответа</Table.Th><Table.Th>Ошибка</Table.Th></Table.Tr></Table.Thead>
           <Table.Tbody>{pageChecks.map((check, index) => <Table.Tr key={`${check.checked_at}-${index}`}><Table.Td>{formatDate(check.checked_at)}</Table.Td><Table.Td><Badge color={check.available ? 'green' : 'red'}>{check.available ? 'Успешно' : 'Ошибка'}</Badge></Table.Td><Table.Td>{check.status_code || '—'}</Table.Td><Table.Td>{check.response_time_ms} мс</Table.Td><Table.Td>{check.error || '—'}</Table.Td></Table.Tr>)}</Table.Tbody>
