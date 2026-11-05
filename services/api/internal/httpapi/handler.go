@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ import (
 
 type checkReader interface {
 	Latest(context.Context, string) (monitoring.Result, error)
+	LatestMany(context.Context, []string) ([]monitoring.Result, error)
 	History(context.Context, string, time.Time, int, int, time.Duration) (monitoring.History, error)
 	Summary(context.Context, string, time.Time) (monitoring.Summary, error)
 }
@@ -66,6 +68,7 @@ func New(checks checkReader, authService authentication, sessions *scs.SessionMa
 	mux.HandleFunc("POST /api/auth/logout", handler.logout)
 	mux.HandleFunc("GET /api/auth/me", handler.me)
 	mux.HandleFunc("GET /api/services", handler.listServices)
+	mux.HandleFunc("GET /api/monitoring/overview", handler.monitoringOverview)
 	mux.HandleFunc("POST /api/services", handler.createService)
 	mux.HandleFunc("PUT /api/services/{id}", handler.updateService)
 	mux.HandleFunc("DELETE /api/services/{id}", handler.deleteService)
@@ -75,6 +78,138 @@ func New(checks checkReader, authService authentication, sessions *scs.SessionMa
 	mux.HandleFunc("GET /api/services/{id}/metrics", handler.serviceMetrics)
 	mux.HandleFunc("GET /api/services/{id}/incidents", handler.listIncidents)
 	return handler.allowCORS(mux)
+}
+
+type overviewItem struct {
+	serviceconfig.Service
+	Status statusResponse `json:"status"`
+}
+type overviewSummary struct {
+	Available   int `json:"available"`
+	Unavailable int `json:"unavailable"`
+	Unknown     int `json:"unknown"`
+	Paused      int `json:"paused"`
+}
+type overviewResponse struct {
+	Summary    overviewSummary `json:"summary"`
+	Services   []overviewItem  `json:"services"`
+	Pagination struct {
+		Limit  int `json:"limit"`
+		Offset int `json:"offset"`
+		Total  int `json:"total"`
+	} `json:"pagination"`
+}
+
+func (handler *handler) monitoringOverview(writer http.ResponseWriter, request *http.Request) {
+	currentUser, ok := handler.currentUser(writer, request)
+	if !ok {
+		return
+	}
+	limit, offset, valid := overviewPage(request.URL.Query())
+	if !valid {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Некорректная пагинация"})
+		return
+	}
+	search, filter := strings.ToLower(strings.TrimSpace(request.URL.Query().Get("search"))), request.URL.Query().Get("status")
+	if filter != "" && filter != "available" && filter != "unavailable" && filter != "unknown" && filter != "paused" {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Некорректный фильтр состояния"})
+		return
+	}
+	services, err := handler.services.ListByOwner(request.Context(), currentUser.ID)
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось получить сервисы"})
+		return
+	}
+	ids := make([]string, 0, len(services))
+	for _, service := range services {
+		if service.Enabled {
+			ids = append(ids, service.ID)
+		}
+	}
+	checks, err := handler.checks.LatestMany(request.Context(), ids)
+	if err != nil {
+		writeJSON(writer, http.StatusBadGateway, map[string]string{"error": "Не удалось получить данные метрик"})
+		return
+	}
+	byService := make(map[string]monitoring.Result, len(checks))
+	for _, check := range checks {
+		byService[check.ServiceID] = check
+	}
+	now := time.Now().UTC()
+	items := make([]overviewItem, 0, len(services))
+	response := overviewResponse{}
+	for _, service := range services {
+		item := overviewItem{Service: service}
+		if !service.Enabled {
+			item.Status = statusResponse{State: "paused"}
+		} else if check, exists := byService[service.ID]; exists {
+			item.Status = determineStatus(service, check, now)
+		} else {
+			item.Status = statusResponse{State: "unknown"}
+		}
+		switch item.Status.State {
+		case "available":
+			response.Summary.Available++
+		case "unavailable":
+			response.Summary.Unavailable++
+		case "paused":
+			response.Summary.Paused++
+		default:
+			response.Summary.Unknown++
+		}
+		if (search == "" || strings.Contains(strings.ToLower(service.Name), search) || strings.Contains(strings.ToLower(service.URL), search)) && (filter == "" || item.Status.State == filter) {
+			items = append(items, item)
+		}
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		left, right := overviewRank(items[i].Status.State), overviewRank(items[j].Status.State)
+		if left != right {
+			return left < right
+		}
+		return items[i].ID < items[j].ID
+	})
+	response.Pagination.Limit, response.Pagination.Offset, response.Pagination.Total = limit, offset, len(items)
+	if offset < len(items) {
+		end := offset + limit
+		if end > len(items) {
+			end = len(items)
+		}
+		response.Services = items[offset:end]
+	} else {
+		response.Services = []overviewItem{}
+	}
+	writeJSON(writer, http.StatusOK, response)
+}
+
+func overviewPage(query url.Values) (int, int, bool) {
+	limit, offset := 20, 0
+	if value := query.Get("limit"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || (parsed != 10 && parsed != 20 && parsed != 50) {
+			return 0, 0, false
+		}
+		limit = parsed
+	}
+	if value := query.Get("offset"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 0 {
+			return 0, 0, false
+		}
+		offset = parsed
+	}
+	return limit, offset, true
+}
+func overviewRank(state string) int {
+	switch state {
+	case "unavailable":
+		return 0
+	case "unknown":
+		return 1
+	case "available":
+		return 2
+	default:
+		return 3
+	}
 }
 
 func (handler *handler) serviceMetrics(writer http.ResponseWriter, request *http.Request) {

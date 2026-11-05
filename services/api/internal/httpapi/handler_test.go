@@ -22,6 +22,7 @@ const testOrigin = "http://localhost:5173"
 
 type stubCheckReader struct {
 	result           monitoring.Result
+	results          []monitoring.Result
 	history          monitoring.History
 	summary          monitoring.Summary
 	err              error
@@ -38,6 +39,30 @@ type historyCall struct {
 func (stub *stubCheckReader) Latest(_ context.Context, serviceID string) (monitoring.Result, error) {
 	stub.requestedService = serviceID
 	return stub.result, stub.err
+}
+
+func (stub *stubCheckReader) LatestMany(_ context.Context, _ []string) ([]monitoring.Result, error) {
+	if stub.results != nil {
+		return stub.results, stub.err
+	}
+	if stub.result.ServiceID == "" {
+		return nil, stub.err
+	}
+	return []monitoring.Result{stub.result}, stub.err
+}
+
+func TestMonitoringOverviewFiltersAndPaginatesOnServer(t *testing.T) {
+	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+	reader := &stubCheckReader{results: []monitoring.Result{{ServiceID: "down", Available: false, StatusCode: 503, CheckedAt: time.Now().UTC()}}}
+	handler, sessions, services, _ := newTestHandler(reader, authentication)
+	services.services = []serviceconfig.Service{{ID: "available", Name: "API", URL: "https://api.test", Enabled: true, IntervalSeconds: 10}, {ID: "down", Name: "Down", URL: "https://down.test", Enabled: true, IntervalSeconds: 10}, {ID: "paused", Name: "Paused", URL: "https://paused.test", Enabled: false, IntervalSeconds: 10}}
+	request := httptest.NewRequest(http.MethodGet, "/api/monitoring/overview?status=unavailable&search=down&limit=10", nil)
+	request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"total":1`) || !strings.Contains(response.Body.String(), `"unavailable":1`) || !strings.Contains(response.Body.String(), `"unknown":1`) || !strings.Contains(response.Body.String(), `"paused":1`) {
+		t.Fatalf("unexpected response=%d body=%s", response.Code, response.Body.String())
+	}
 }
 
 func (stub *stubCheckReader) History(_ context.Context, serviceID string, _ time.Time, limit, offset int, aggregateWindow time.Duration) (monitoring.History, error) {

@@ -64,6 +64,40 @@ func (influx *InfluxDB) Latest(ctx context.Context, serviceID string) (metric.Re
 	return result, nil
 }
 
+func (influx *InfluxDB) LatestMany(ctx context.Context, serviceIDs []string) ([]metric.Result, error) {
+	if len(serviceIDs) == 0 {
+		return []metric.Result{}, nil
+	}
+	endpoint, err := url.Parse(influx.baseURL + "/api/v2/query")
+	if err != nil {
+		return nil, fmt.Errorf("parse InfluxDB URL: %w", err)
+	}
+	values := endpoint.Query()
+	values.Set("org", influx.org)
+	endpoint.RawQuery = values.Encode()
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewBufferString(influx.latestManyQuery(serviceIDs)))
+	if err != nil {
+		return nil, fmt.Errorf("create InfluxDB query request: %w", err)
+	}
+	request.Header.Set("Authorization", "Token "+influx.token)
+	request.Header.Set("Accept", "application/csv")
+	request.Header.Set("Content-Type", "application/vnd.flux")
+	response, err := influx.client.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("query InfluxDB: %w", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 1024))
+		return nil, fmt.Errorf("InfluxDB returned %s: %s", response.Status, strings.TrimSpace(string(body)))
+	}
+	results, err := parseResults(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("parse InfluxDB response: %w", err)
+	}
+	return results, nil
+}
+
 // History returns checks in reverse chronological order.  The time range and
 // page bounds are supplied by the API service and never inferred from input.
 func (influx *InfluxDB) History(ctx context.Context, serviceID string, from time.Time, limit, offset int, aggregateWindow time.Duration) ([]metric.Result, error) {
@@ -198,6 +232,21 @@ func (influx *InfluxDB) latestQuery(serviceID string) string {
   |> group()
   |> sort(columns: ["_time"], desc: true)
   |> limit(n: 1)`, escapeFluxString(influx.bucket), serviceFilter)
+}
+
+func (influx *InfluxDB) latestManyQuery(serviceIDs []string) string {
+	quoted := make([]string, 0, len(serviceIDs))
+	for _, serviceID := range serviceIDs {
+		quoted = append(quoted, fmt.Sprintf(`"%s"`, escapeFluxString(serviceID)))
+	}
+	return fmt.Sprintf(`from(bucket: "%s")
+  |> range(start: -30d)
+  |> filter(fn: (r) => r._measurement == "service_check")
+  |> filter(fn: (r) => contains(value: r.service_id, set: [%s]))
+  |> pivot(rowKey: ["_time", "job_id", "service_id", "service_url"], columnKey: ["_field"], valueColumn: "_value")
+  |> group(columns: ["service_id"])
+  |> sort(columns: ["_time"], desc: true)
+  |> limit(n: 1)`, escapeFluxString(influx.bucket), strings.Join(quoted, ", "))
 }
 
 func (influx *InfluxDB) historyQuery(serviceID string, from time.Time, limit, offset int, aggregateWindow time.Duration) string {
