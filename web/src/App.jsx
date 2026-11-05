@@ -26,7 +26,7 @@ function App() {
   const [path, setPath] = useState(window.location.pathname)
   useEffect(() => { const listener = () => setPath(window.location.pathname); window.addEventListener('popstate', listener); return () => window.removeEventListener('popstate', listener) }, [])
   const navigate = (to) => { window.history.pushState({}, '', to); setPath(to) }
-  const detailID = path.match(/^\/services\/([^/]+)$/)?.[1]
+  const detailID = path.match(/^\/([^/]+)$/)?.[1]
 
   if (userQuery.isPending) return <Loader />
   if (userQuery.isError) return <Alert color="red">{userQuery.error.message}</Alert>

@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Group, Loader, Modal, Select, SimpleGrid, Stack, Table, Tabs, Text, TextInput, Title } from '@mantine/core'
+import { Alert, Badge, Button, Card, Group, Loader, Modal, Select, SimpleGrid, Stack, Table, Text, TextInput, Title } from '@mantine/core'
 import { useEffect, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -24,7 +24,6 @@ const statePresentation = {
 export function ServiceDashboard({ serviceID, onNavigate }) {
   const queryClient = useQueryClient()
   const [selectedID, setSelectedID] = useState(serviceID ?? null)
-  const [tab, setTab] = useState('overview')
   const [editing, setEditing] = useState(null)
   const [creating, setCreating] = useState(false)
   const [historyPeriod, setHistoryPeriod] = useState('24h')
@@ -40,7 +39,7 @@ export function ServiceDashboard({ serviceID, onNavigate }) {
   const [incidentsPage, setIncidentsPage] = useState(0)
   const detailMode = Boolean(serviceID)
   useEffect(() => { const timer = setTimeout(() => { setSearch(searchInput); setOverviewPage(0) }, 300); return () => clearTimeout(timer) }, [searchInput])
-  const overviewQuery = useQuery({ queryKey: ['monitoring-overview', search, statusFilter, overviewSort, overviewDirection, overviewPage, overviewPageSize], queryFn: () => apiRequest(`/api/monitoring/overview?search=${encodeURIComponent(search)}&status=${statusFilter}&sort=${overviewSort}&direction=${overviewDirection}&limit=${overviewPageSize}&offset=${overviewPage * overviewPageSize}`), placeholderData: keepPreviousData, retry: false, refetchInterval: 10_000 })
+  const overviewQuery = useQuery({ queryKey: ['monitoring-overview', search, statusFilter, overviewSort, overviewDirection, overviewPage, overviewPageSize], queryFn: () => apiRequest(`/api/monitoring/overview?search=${encodeURIComponent(search)}&status=${statusFilter}&sort=${overviewSort}&direction=${overviewDirection}&limit=${overviewPageSize}&offset=${overviewPage * overviewPageSize}`), enabled: !detailMode, placeholderData: keepPreviousData, retry: false, refetchInterval: 10_000 })
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['monitoring-overview'] })
   const createMutation = useMutation({
     mutationFn: (service) => apiRequest('/api/services', jsonRequest('POST', service)),
@@ -68,7 +67,7 @@ export function ServiceDashboard({ serviceID, onNavigate }) {
   })
 
   const services = overviewQuery.data?.services ?? []
-  const currentServiceID = serviceID ?? selectedID ?? services[0]?.id ?? null
+  const currentServiceID = detailMode ? serviceID : null
   const selectedServiceQuery = useQuery({
     queryKey: ['service', currentServiceID],
     queryFn: () => apiRequest(`/api/services/${currentServiceID}`),
@@ -125,7 +124,7 @@ export function ServiceDashboard({ serviceID, onNavigate }) {
       {services.length === 0 ? (
         <Card withBorder><Text>Сервисов пока нет. Добавьте первый сервис для мониторинга.</Text></Card>
       ) : (
-        <OverviewTable services={services} onSelect={(id) => { if (onNavigate) onNavigate(`/services/${id}`); else setSelectedID(id); setHistoryPage(0); setIncidentsPage(0) }} />
+        <OverviewTable services={services} onSelect={(id) => { if (onNavigate) onNavigate(`/${id}`); else setSelectedID(id); setHistoryPage(0); setIncidentsPage(0) }} />
       )}
       <Group justify="space-between"><Button aria-label="Предыдущая страница сервисов" variant="default" disabled={overviewPage === 0} onClick={() => setOverviewPage((page) => page - 1)}>Назад</Button><Text size="sm">{overviewQuery.data.pagination.total} сервисов</Text><Button aria-label="Следующая страница сервисов" variant="default" disabled={(overviewPage + 1) * overviewPageSize >= overviewQuery.data.pagination.total} onClick={() => setOverviewPage((page) => page + 1)}>Вперёд</Button></Group></>}
 
@@ -133,7 +132,7 @@ export function ServiceDashboard({ serviceID, onNavigate }) {
       {selectedService && (
         <Card withBorder>
           <Stack gap="md">
-            {detailMode && <Button variant="subtle" px={0} w="fit-content" onClick={() => onNavigate('/services')}>← Назад к сервисам</Button>}
+            {detailMode && <Button variant="subtle" px={0} w="fit-content" onClick={() => onNavigate('/')}>← Назад к сервисам</Button>}
             <Group justify="space-between">
               <div>
                 <Title order={3}>{selectedService.name}</Title>
@@ -152,7 +151,12 @@ export function ServiceDashboard({ serviceID, onNavigate }) {
         </Card>
       )}
 
-      {selectedService && <Tabs value={tab} onChange={(value) => value && setTab(value)} keepMounted={false}><Tabs.List><Tabs.Tab value="overview">Обзор</Tabs.Tab><Tabs.Tab value="history">История</Tabs.Tab><Tabs.Tab value="incidents">Инциденты</Tabs.Tab></Tabs.List><Tabs.Panel value="overview" pt="md"><ServiceStatus query={statusQuery} /><MonitoringMetrics query={metricsQuery} /><CheckHistory chartQuery={chartQuery} query={historyQuery} period={historyPeriod} page={historyPage} pageSize={historyPageSize} onPeriodChange={(value) => { setHistoryPeriod(value); setHistoryPage(0) }} onPageChange={setHistoryPage} onPageSizeChange={(value) => { setHistoryPageSize(Number(value)); setHistoryPage(0) }} /></Tabs.Panel><Tabs.Panel value="history" pt="md"><CheckHistory chartQuery={chartQuery} query={historyQuery} period={historyPeriod} page={historyPage} pageSize={historyPageSize} onPeriodChange={(value) => { setHistoryPeriod(value); setHistoryPage(0) }} onPageChange={setHistoryPage} onPageSizeChange={(value) => { setHistoryPageSize(Number(value)); setHistoryPage(0) }} /></Tabs.Panel><Tabs.Panel value="incidents" pt="md"><Incidents query={incidentsQuery} page={incidentsPage} onPageChange={setIncidentsPage} /></Tabs.Panel></Tabs>}
+      {selectedService && <>
+        <ServiceStatus query={statusQuery} />
+        <MonitoringMetrics query={metricsQuery} />
+        <CheckHistory chartQuery={chartQuery} query={historyQuery} period={historyPeriod} page={historyPage} pageSize={historyPageSize} onPeriodChange={(value) => { setHistoryPeriod(value); setHistoryPage(0) }} onPageChange={setHistoryPage} onPageSizeChange={(value) => { setHistoryPageSize(Number(value)); setHistoryPage(0) }} />
+        <Incidents query={incidentsQuery} page={incidentsPage} onPageChange={setIncidentsPage} />
+      </>}
 
       <Modal opened={creating} onClose={() => setCreating(false)} title="Новый сервис">
         {createMutation.error && <Alert mb="sm" color="red">{createMutation.error.message}</Alert>}
@@ -198,7 +202,7 @@ function CheckHistory({ chartQuery, query, period, page, pageSize, onPeriodChang
     <Stack gap="md">
       <Group justify="space-between" align="end">
         <Title order={3}>История проверок</Title>
-        <Select aria-label="Период истории" value={period} onChange={(value) => value && onPeriodChange(value)} data={[{ value: '24h', label: '24 часа' }, { value: '7d', label: '7 дней' }, { value: '30d', label: '30 дней' }]} />
+        <Select aria-label="Период истории" value={period} onChange={(value) => value && onPeriodChange(value)} allowDeselect={false} data={[{ value: '1h', label: '1 час' }, { value: '6h', label: '6 часов' }, { value: '24h', label: '24 часа' }, { value: '7d', label: '7 дней' }, { value: '30d', label: '30 дней' }]} />
       </Group>
       {chartQuery.isPending ? <Text c="dimmed">Загрузка графика…</Text> : chartData.length > 0 && <>
         <div style={{ width: '100%', height: 260 }}>

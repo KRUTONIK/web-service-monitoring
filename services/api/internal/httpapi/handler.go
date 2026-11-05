@@ -304,7 +304,7 @@ func metricsPeriod(period string) (string, time.Duration, bool) {
 	if period == "" {
 		period = "24h"
 	}
-	durations := map[string]time.Duration{"24h": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30d": 30 * 24 * time.Hour}
+	durations := map[string]time.Duration{"1h": time.Hour, "6h": 6 * time.Hour, "24h": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30d": 30 * 24 * time.Hour}
 	duration, ok := durations[period]
 	return period, duration, ok
 }
@@ -345,7 +345,7 @@ func (handler *handler) checkHistory(writer http.ResponseWriter, request *http.R
 		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось проверить доступ к сервису"})
 		return
 	}
-	periods := map[string]time.Duration{"24h": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30d": 30 * 24 * time.Hour}
+	periods := map[string]time.Duration{"1h": time.Hour, "6h": 6 * time.Hour, "24h": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30d": 30 * 24 * time.Hour}
 	period := request.URL.Query().Get("period")
 	if period == "" {
 		period = "24h"
