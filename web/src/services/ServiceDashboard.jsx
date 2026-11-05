@@ -34,9 +34,11 @@ export function ServiceDashboard() {
   const [statusFilter, setStatusFilter] = useState('')
   const [overviewPage, setOverviewPage] = useState(0)
   const [overviewPageSize, setOverviewPageSize] = useState(20)
+  const [overviewSort, setOverviewSort] = useState('state')
+  const [overviewDirection, setOverviewDirection] = useState('asc')
   const [incidentsPage, setIncidentsPage] = useState(0)
   useEffect(() => { const timer = setTimeout(() => { setSearch(searchInput); setOverviewPage(0) }, 300); return () => clearTimeout(timer) }, [searchInput])
-  const overviewQuery = useQuery({ queryKey: ['monitoring-overview', search, statusFilter, overviewPage, overviewPageSize], queryFn: () => apiRequest(`/api/monitoring/overview?search=${encodeURIComponent(search)}&status=${statusFilter}&limit=${overviewPageSize}&offset=${overviewPage * overviewPageSize}`), retry: false, refetchInterval: 10_000 })
+  const overviewQuery = useQuery({ queryKey: ['monitoring-overview', search, statusFilter, overviewSort, overviewDirection, overviewPage, overviewPageSize], queryFn: () => apiRequest(`/api/monitoring/overview?search=${encodeURIComponent(search)}&status=${statusFilter}&sort=${overviewSort}&direction=${overviewDirection}&limit=${overviewPageSize}&offset=${overviewPage * overviewPageSize}`), retry: false, refetchInterval: 10_000 })
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['monitoring-overview'] })
   const createMutation = useMutation({
     mutationFn: (service) => apiRequest('/api/services', jsonRequest('POST', service)),
@@ -50,6 +52,7 @@ export function ServiceDashboard() {
     mutationFn: ({ id, service }) => apiRequest(`/api/services/${id}`, jsonRequest('PUT', service)),
     onSuccess: async (service) => {
       await invalidate()
+      queryClient.setQueryData(['service', service.id], service)
       setSelectedID(service.id)
       setEditing(null)
     },
@@ -63,7 +66,13 @@ export function ServiceDashboard() {
   })
 
   const services = overviewQuery.data?.services ?? []
-  const currentServiceID = services.some((service) => service.id === selectedID) ? selectedID : services[0]?.id ?? null
+  const currentServiceID = selectedID ?? services[0]?.id ?? null
+  const selectedServiceQuery = useQuery({
+    queryKey: ['service', currentServiceID],
+    queryFn: () => apiRequest(`/api/services/${currentServiceID}`),
+    enabled: Boolean(currentServiceID),
+    retry: false,
+  })
   const statusQuery = useQuery({
     queryKey: ['service-status', currentServiceID],
     queryFn: () => apiRequest(`/api/services/${currentServiceID}/status`),
@@ -97,7 +106,7 @@ export function ServiceDashboard() {
   if (overviewQuery.isPending) return <Loader />
   if (overviewQuery.isError) return <Alert color="red">{overviewQuery.error.message}</Alert>
 
-  const selectedService = services.find((service) => service.id === currentServiceID)
+  const selectedService = selectedServiceQuery.data
   return (
     <Stack gap="lg">
       <Group justify="space-between">
@@ -109,7 +118,7 @@ export function ServiceDashboard() {
       </Group>
 
       <OverviewCounters summary={overviewQuery.data.summary} />
-      <Group grow align="end"><TextInput label="Поиск" value={searchInput} onChange={(event) => setSearchInput(event.currentTarget.value)} placeholder="Название или URL" /><Select label="Состояние" value={statusFilter} onChange={(value) => { setStatusFilter(value ?? ''); setOverviewPage(0) }} data={[{ value: '', label: 'Все состояния' }, { value: 'available', label: 'Доступные' }, { value: 'unavailable', label: 'Недоступные' }, { value: 'unknown', label: 'Нет данных' }, { value: 'paused', label: 'Отключённые' }]} /><Select label="На странице" value={String(overviewPageSize)} onChange={(value) => { setOverviewPageSize(Number(value)); setOverviewPage(0) }} data={['10', '20', '50']} /></Group>
+      <Group grow align="end"><TextInput label="Поиск" value={searchInput} onChange={(event) => setSearchInput(event.currentTarget.value)} placeholder="Название или URL" /><Select label="Состояние" value={statusFilter} onChange={(value) => { setStatusFilter(value ?? ''); setOverviewPage(0) }} data={[{ value: '', label: 'Все состояния' }, { value: 'available', label: 'Доступные' }, { value: 'unavailable', label: 'Недоступные' }, { value: 'unknown', label: 'Нет данных' }, { value: 'paused', label: 'Отключённые' }]} /><Select label="Сортировка" value={overviewSort} onChange={(value) => { const sort = value ?? 'state'; setOverviewSort(sort); setOverviewDirection(sort === 'checked_at' ? 'desc' : 'asc'); setOverviewPage(0) }} data={[{ value: 'state', label: 'По состоянию' }, { value: 'name', label: 'По названию' }, { value: 'checked_at', label: 'По времени проверки' }]} /><Select label="Порядок сортировки" value={overviewDirection} onChange={(value) => { setOverviewDirection(value ?? 'asc'); setOverviewPage(0) }} data={[{ value: 'asc', label: overviewSort === 'checked_at' ? 'Сначала старые' : 'По возрастанию' }, { value: 'desc', label: overviewSort === 'checked_at' ? 'Сначала новые' : 'По убыванию' }]} /><Select label="На странице" value={String(overviewPageSize)} onChange={(value) => { setOverviewPageSize(Number(value)); setOverviewPage(0) }} data={['10', '20', '50']} /></Group>
       {services.length === 0 ? (
         <Card withBorder><Text>Сервисов пока нет. Добавьте первый сервис для мониторинга.</Text></Card>
       ) : (
@@ -117,6 +126,7 @@ export function ServiceDashboard() {
       )}
       <Group justify="space-between"><Button aria-label="Предыдущая страница сервисов" variant="default" disabled={overviewPage === 0} onClick={() => setOverviewPage((page) => page - 1)}>Назад</Button><Text size="sm">{overviewQuery.data.pagination.total} сервисов</Text><Button aria-label="Следующая страница сервисов" variant="default" disabled={(overviewPage + 1) * overviewPageSize >= overviewQuery.data.pagination.total} onClick={() => setOverviewPage((page) => page + 1)}>Вперёд</Button></Group>
 
+      {selectedServiceQuery.isPending && currentServiceID && <Card withBorder><Text c="dimmed">Загрузка выбранного сервиса…</Text></Card>}
       {selectedService && (
         <Card withBorder>
           <Stack gap="md">

@@ -59,13 +59,22 @@ async function mockDashboard(page, { services = [service], status = serviceStatu
     const url = new URL(route.request().url())
     const offset = Number(url.searchParams.get('offset') || 0)
     const limit = Number(url.searchParams.get('limit') || 20)
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ summary: { available: values.filter((value) => value.enabled).length, unavailable: 0, unknown: 0, paused: values.filter((value) => !value.enabled).length }, services: values.slice(offset, offset + limit).map((value) => ({ ...value, status: { state: value.enabled ? 'available' : 'paused', current: value.enabled, last_check: value.enabled ? checkResult({ service_id: value.id, service_url: value.url }) : undefined } })), pagination: { limit, offset, total: values.length } }) })
+    const search = (url.searchParams.get('search') || '').toLowerCase()
+    const status = url.searchParams.get('status') || ''
+    const filtered = values.filter((value) => (!search || value.name.toLowerCase().includes(search) || value.url.toLowerCase().includes(search)) && (!status || status === (value.enabled ? 'available' : 'paused')))
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ summary: { available: values.filter((value) => value.enabled).length, unavailable: 0, unknown: 0, paused: values.filter((value) => !value.enabled).length }, services: filtered.slice(offset, offset + limit).map((value) => ({ ...value, status: { state: value.enabled ? 'available' : 'paused', current: value.enabled, last_check: value.enabled ? checkResult({ service_id: value.id, service_url: value.url }) : undefined } })), pagination: { limit, offset, total: filtered.length } }) })
   })
   await page.route('**/api/services', (route) => {
     if (route.request().method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(created ? [...services, createdService] : services) })
     expect(route.request().postDataJSON()).toEqual({ name: 'Тестовый сервис', url: 'https://new.example', enabled: true, interval_seconds: 60, timeout_seconds: 5 })
     created = true
     return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(createdService) })
+  })
+  await page.route('**/api/services/*', (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    const id = route.request().url().split('/').pop()
+    const value = (created ? [...services, createdService] : services).find((item) => item.id === id)
+    return value ? route.fulfill({ contentType: 'application/json', body: JSON.stringify(value) }) : route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'Сервис не найден' }) })
   })
   await page.route('**/api/services/*/status', (route) => {
     if (statusHandler) return statusHandler(route)
@@ -273,11 +282,45 @@ test('при переключении сервиса показывает тол
   await expect(page.getByText('Недоступен', { exact: true })).toBeVisible()
 })
 
+test('сохраняет выбранный сервис при пагинации, поиске и фильтре', async ({ page }) => {
+  const selected = { ...service, id: 'service-1', name: 'Выбранный сайт' }
+  const otherServices = Array.from({ length: 20 }, (_, index) => ({ ...service, id: `service-${index + 2}`, name: `Сервис ${index + 2}`, url: `https://service-${index + 2}.example` }))
+  await mockDashboard(page, { services: [selected, ...otherServices] })
+  await page.goto('/')
+  await page.getByRole('row', { name: /Выбранный сайт.*https:\/\/service\.example/ }).click()
+  await expect(page.getByRole('heading', { name: 'Выбранный сайт' })).toBeVisible()
+  await page.getByRole('button', { name: 'Следующая страница сервисов' }).click()
+  await expect(page.getByRole('heading', { name: 'Выбранный сайт' })).toBeVisible()
+  await page.getByLabel('Поиск').fill('Сервис 11')
+  await expect(page.getByRole('row', { name: /Сервис 11/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Выбранный сайт' })).toBeVisible()
+  await page.getByRole('textbox', { name: 'Состояние' }).click()
+  await page.getByRole('option', { name: 'Доступные', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Выбранный сайт' })).toBeVisible()
+  await page.getByRole('row', { name: /Сервис 11.*https:\/\/service-11\.example/ }).click()
+  await expect(page.getByRole('heading', { name: 'Сервис 11' })).toBeVisible()
+})
+
+test('передаёт сортировку обзора на сервер и возвращается к первой странице', async ({ page }) => {
+  const requests = []
+  await mockDashboard(page, { services: Array.from({ length: 21 }, (_, index) => ({ ...service, id: `service-${index + 1}`, name: `Сервис ${index + 1}` })) })
+  await page.route('**/api/monitoring/overview?**', (route) => {
+    requests.push(route.request().url())
+    return route.fallback()
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Следующая страница сервисов' }).click()
+  await page.getByRole('textbox', { name: 'Сортировка' }).click()
+  await page.getByRole('option', { name: 'По названию', exact: true }).click()
+  await expect.poll(() => requests.some((url) => url.includes('sort=name') && url.includes('offset=0'))).toBeTruthy()
+})
+
 test('изменяет сервис', async ({ page }) => {
   const services = [{ ...service }]
   const updated = { ...service, name: 'Изменённый сайт', url: 'https://updated.example', interval_seconds: 30, timeout_seconds: 7, version: 2 }
   await mockDashboard(page, { services })
   await page.route('**/api/services/service-1', (route) => {
+    if (route.request().method() === 'GET') return route.fallback()
     expect(route.request().postDataJSON()).toEqual({ name: updated.name, url: updated.url, enabled: true, interval_seconds: 30, timeout_seconds: 7 })
     services[0] = updated
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify(updated) })
@@ -298,6 +341,7 @@ test('удаляет сервис из списка', async ({ page }) => {
   const services = [{ ...service }]
   await mockDashboard(page, { services })
   await page.route('**/api/services/service-1', (route) => {
+    if (route.request().method() === 'GET') return route.fallback()
     services.splice(0, 1)
     return route.fulfill({ status: 204 })
   })

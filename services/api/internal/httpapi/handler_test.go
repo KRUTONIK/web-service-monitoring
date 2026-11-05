@@ -65,6 +65,43 @@ func TestMonitoringOverviewFiltersAndPaginatesOnServer(t *testing.T) {
 	}
 }
 
+func TestMonitoringOverviewSortsBeforePagination(t *testing.T) {
+	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+	reader := &stubCheckReader{results: []monitoring.Result{
+		{ServiceID: "a", Available: true, CheckedAt: time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)},
+		{ServiceID: "b", Available: true, CheckedAt: time.Date(2026, 11, 5, 11, 0, 0, 0, time.UTC)},
+	}}
+	handler, sessions, services, _ := newTestHandler(reader, authentication)
+	services.services = []serviceconfig.Service{{ID: "a", Name: "Zulu", URL: "https://z.test", Enabled: true, IntervalSeconds: 10}, {ID: "b", Name: "Alpha", URL: "https://a.test", Enabled: true, IntervalSeconds: 10}}
+	request := httptest.NewRequest(http.MethodGet, "/api/monitoring/overview?sort=name&direction=asc&limit=10", nil)
+	request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || strings.Index(response.Body.String(), `"id":"b"`) > strings.Index(response.Body.String(), `"id":"a"`) {
+		t.Fatalf("expected alphabetical server order, response=%d body=%s", response.Code, response.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/api/monitoring/overview?sort=checked_at&direction=desc&limit=10", nil)
+	request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || strings.Index(response.Body.String(), `"id":"b"`) > strings.Index(response.Body.String(), `"id":"a"`) {
+		t.Fatalf("expected newest first server order, response=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestMonitoringOverviewRejectsInvalidSort(t *testing.T) {
+	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+	handler, sessions, _, _ := newTestHandler(&stubCheckReader{}, authentication)
+	request := httptest.NewRequest(http.MethodGet, "/api/monitoring/overview?sort=unsupported", nil)
+	request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected invalid sort to be rejected, got %d", response.Code)
+	}
+}
+
 func (stub *stubCheckReader) History(_ context.Context, serviceID string, _ time.Time, limit, offset int, aggregateWindow time.Duration) (monitoring.History, error) {
 	stub.requestedService = serviceID
 	stub.history.Limit, stub.history.Offset = limit, offset
@@ -122,6 +159,14 @@ func (stub *stubServiceRepository) ListPageByOwner(_ context.Context, ownerID st
 }
 func (stub *stubServiceRepository) ByIDAndOwner(_ context.Context, ownerID, serviceID string) (serviceconfig.Service, error) {
 	stub.ownerID, stub.serviceID = ownerID, serviceID
+	for _, service := range stub.services {
+		if service.ID == serviceID {
+			return service, stub.err
+		}
+	}
+	if stub.service.ID == serviceID || stub.service.ID != "" {
+		return stub.service, stub.err
+	}
 	return stub.service, stub.err
 }
 func (stub *stubServiceRepository) Create(_ context.Context, ownerID, _, _ string, _ bool, _, _ int) (serviceconfig.Service, error) {

@@ -70,6 +70,7 @@ func New(checks checkReader, authService authentication, sessions *scs.SessionMa
 	mux.HandleFunc("POST /api/auth/logout", handler.logout)
 	mux.HandleFunc("GET /api/auth/me", handler.me)
 	mux.HandleFunc("GET /api/services", handler.listServices)
+	mux.HandleFunc("GET /api/services/{id}", handler.getService)
 	mux.HandleFunc("GET /api/monitoring/overview", handler.monitoringOverview)
 	mux.HandleFunc("POST /api/services", handler.createService)
 	mux.HandleFunc("PUT /api/services/{id}", handler.updateService)
@@ -113,6 +114,11 @@ func (handler *handler) monitoringOverview(writer http.ResponseWriter, request *
 		return
 	}
 	search, filter := strings.ToLower(strings.TrimSpace(request.URL.Query().Get("search"))), request.URL.Query().Get("status")
+	sortBy, direction, valid := overviewSort(request.URL.Query())
+	if !valid {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Некорректная сортировка"})
+		return
+	}
 	if filter != "" && filter != "available" && filter != "unavailable" && filter != "unknown" && filter != "paused" {
 		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Некорректный фильтр состояния"})
 		return
@@ -163,13 +169,7 @@ func (handler *handler) monitoringOverview(writer http.ResponseWriter, request *
 			items = append(items, item)
 		}
 	}
-	sort.SliceStable(items, func(i, j int) bool {
-		left, right := overviewRank(items[i].Status.State), overviewRank(items[j].Status.State)
-		if left != right {
-			return left < right
-		}
-		return items[i].ID < items[j].ID
-	})
+	sort.SliceStable(items, overviewLess(items, sortBy, direction))
 	response.Pagination.Limit, response.Pagination.Offset, response.Pagination.Total = limit, offset, len(items)
 	if offset < len(items) {
 		end := offset + limit
@@ -181,6 +181,52 @@ func (handler *handler) monitoringOverview(writer http.ResponseWriter, request *
 		response.Services = []overviewItem{}
 	}
 	writeJSON(writer, http.StatusOK, response)
+}
+
+func overviewSort(query url.Values) (string, string, bool) {
+	sortBy, direction := query.Get("sort"), query.Get("direction")
+	if sortBy == "" {
+		sortBy = "state"
+	}
+	if direction == "" {
+		direction = "asc"
+		if sortBy == "checked_at" {
+			direction = "desc"
+		}
+	}
+	if (sortBy != "state" && sortBy != "name" && sortBy != "checked_at") || (direction != "asc" && direction != "desc") {
+		return "", "", false
+	}
+	return sortBy, direction, true
+}
+
+func overviewLess(items []overviewItem, sortBy, direction string) func(int, int) bool {
+	return func(i, j int) bool {
+		left, right := items[i], items[j]
+		var comparison int
+		switch sortBy {
+		case "name":
+			comparison = strings.Compare(strings.ToLower(left.Name), strings.ToLower(right.Name))
+		case "checked_at":
+			leftTime, rightTime := time.Time{}, time.Time{}
+			if left.Status.LastCheck != nil {
+				leftTime = left.Status.LastCheck.CheckedAt
+			}
+			if right.Status.LastCheck != nil {
+				rightTime = right.Status.LastCheck.CheckedAt
+			}
+			comparison = leftTime.Compare(rightTime)
+		default:
+			comparison = overviewRank(left.Status.State) - overviewRank(right.Status.State)
+		}
+		if comparison == 0 {
+			comparison = strings.Compare(left.ID, right.ID)
+		}
+		if direction == "desc" {
+			return comparison > 0
+		}
+		return comparison < 0
+	}
 }
 
 func overviewPage(query url.Values) (int, int, bool) {
@@ -499,6 +545,23 @@ func (handler *handler) listServices(writer http.ResponseWriter, request *http.R
 	}
 
 	writeJSON(writer, http.StatusOK, pagedResponse[serviceconfig.Service]{Items: services, Limit: limit, Offset: offset, Total: total})
+}
+
+func (handler *handler) getService(writer http.ResponseWriter, request *http.Request) {
+	currentUser, ok := handler.currentUser(writer, request)
+	if !ok {
+		return
+	}
+	service, err := handler.services.ByIDAndOwner(request.Context(), currentUser.ID, request.PathValue("id"))
+	if errors.Is(err, serviceconfig.ErrNotFound) {
+		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "Сервис не найден"})
+		return
+	}
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось получить сервис"})
+		return
+	}
+	writeJSON(writer, http.StatusOK, service)
 }
 
 type pagedResponse[T any] struct {
