@@ -109,6 +109,17 @@ func (stub *stubServiceRepository) ListByOwner(_ context.Context, ownerID string
 	stub.ownerID = ownerID
 	return stub.services, stub.err
 }
+func (stub *stubServiceRepository) ListPageByOwner(_ context.Context, ownerID string, limit, offset int) ([]serviceconfig.Service, int, error) {
+	stub.ownerID = ownerID
+	end := offset + limit
+	if end > len(stub.services) {
+		end = len(stub.services)
+	}
+	if offset > len(stub.services) {
+		offset = len(stub.services)
+	}
+	return stub.services[offset:end], len(stub.services), stub.err
+}
 func (stub *stubServiceRepository) ByIDAndOwner(_ context.Context, ownerID, serviceID string) (serviceconfig.Service, error) {
 	stub.ownerID, stub.serviceID = ownerID, serviceID
 	return stub.service, stub.err
@@ -140,6 +151,17 @@ type stubIncidentRepository struct {
 func (stub *stubIncidentRepository) ListByService(_ context.Context, serviceID string) ([]incident.Incident, error) {
 	stub.serviceID = serviceID
 	return stub.values, stub.err
+}
+func (stub *stubIncidentRepository) ListPageByService(_ context.Context, serviceID string, limit, offset int) ([]incident.Incident, int, error) {
+	stub.serviceID = serviceID
+	end := offset + limit
+	if end > len(stub.values) {
+		end = len(stub.values)
+	}
+	if offset > len(stub.values) {
+		offset = len(stub.values)
+	}
+	return stub.values[offset:end], len(stub.values), stub.err
 }
 
 func (stub *stubConfigurationPublisher) Publish(_ context.Context, update serviceconfig.Update) error {

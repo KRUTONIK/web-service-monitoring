@@ -71,7 +71,7 @@ async function mockDashboard(page, { services = [service], status = serviceStatu
     if (statusHandler) return statusHandler(route)
     return route.fulfill({ status: statusCode, contentType: 'application/json', body: JSON.stringify(status) })
   })
-  await page.route('**/api/services/*/incidents', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(incidents) }))
+  await page.route('**/api/services/*/incidents?**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: incidents, limit: 20, offset: 0, total: incidents.length }) }))
   await page.route('**/api/services/*/checks?**', (route) => {
     if (checksHandler) return checksHandler(route)
     const url = new URL(route.request().url())
@@ -103,7 +103,7 @@ test('показывает сервис и актуальное состояни
   await mockDashboard(page)
   await page.goto('/')
 	await expect(page.getByRole('heading', { name: 'Основной сайт' })).toBeVisible()
-  await expect(page.getByText('Доступен')).toBeVisible()
+  await expect(page.getByRole('row', { name: /Основной сайт.*Доступен/ }).getByText('Доступен', { exact: true })).toBeVisible()
   await expect(statusResponseTime(page, '42 мс')).toBeVisible()
   await expect(statusCheckTime(page)).toBeVisible()
 })

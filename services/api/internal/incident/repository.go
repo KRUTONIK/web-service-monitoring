@@ -91,3 +91,20 @@ func (repository *Repository) ListByService(ctx context.Context, serviceID strin
 	}
 	return incidents, nil
 }
+
+func (repository *Repository) ListPageByService(ctx context.Context, serviceID string, limit, offset int) ([]Incident, int, error) {
+	database := repository.database.WithContext(ctx).Where("service_id = ?", serviceID)
+	var total int64
+	if err := database.Model(&record{}).Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("count incidents: %w", err)
+	}
+	var records []record
+	if err := database.Order("started_at DESC, id").Limit(limit).Offset(offset).Find(&records).Error; err != nil {
+		return nil, 0, fmt.Errorf("list incidents page: %w", err)
+	}
+	incidents := make([]Incident, len(records))
+	for index, value := range records {
+		incidents[index] = Incident{ID: value.ID, ServiceID: value.ServiceID, StartedAt: value.StartedAt, EndedAt: value.EndedAt}
+	}
+	return incidents, int(total), nil
+}

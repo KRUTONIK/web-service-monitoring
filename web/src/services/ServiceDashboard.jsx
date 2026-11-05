@@ -34,6 +34,7 @@ export function ServiceDashboard() {
   const [statusFilter, setStatusFilter] = useState('')
   const [overviewPage, setOverviewPage] = useState(0)
   const [overviewPageSize, setOverviewPageSize] = useState(20)
+  const [incidentsPage, setIncidentsPage] = useState(0)
   useEffect(() => { const timer = setTimeout(() => { setSearch(searchInput); setOverviewPage(0) }, 300); return () => clearTimeout(timer) }, [searchInput])
   const overviewQuery = useQuery({ queryKey: ['monitoring-overview', search, statusFilter, overviewPage, overviewPageSize], queryFn: () => apiRequest(`/api/monitoring/overview?search=${encodeURIComponent(search)}&status=${statusFilter}&limit=${overviewPageSize}&offset=${overviewPage * overviewPageSize}`), retry: false, refetchInterval: 10_000 })
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['monitoring-overview'] })
@@ -71,8 +72,8 @@ export function ServiceDashboard() {
     refetchInterval: 10_000,
   })
   const incidentsQuery = useQuery({
-    queryKey: ['incidents', currentServiceID],
-    queryFn: () => apiRequest(`/api/services/${currentServiceID}/incidents`),
+    queryKey: ['incidents', currentServiceID, incidentsPage],
+    queryFn: () => apiRequest(`/api/services/${currentServiceID}/incidents?limit=20&offset=${incidentsPage * 20}`),
     enabled: Boolean(currentServiceID),
     retry: false,
 	refetchInterval: 10_000,
@@ -112,7 +113,7 @@ export function ServiceDashboard() {
       {services.length === 0 ? (
         <Card withBorder><Text>Сервисов пока нет. Добавьте первый сервис для мониторинга.</Text></Card>
       ) : (
-        <OverviewTable services={services} onSelect={(id) => { setSelectedID(id); setHistoryPage(0) }} />
+        <OverviewTable services={services} onSelect={(id) => { setSelectedID(id); setHistoryPage(0); setIncidentsPage(0) }} />
       )}
       <Group justify="space-between"><Button variant="default" disabled={overviewPage === 0} onClick={() => setOverviewPage((page) => page - 1)}>Назад</Button><Text size="sm">{overviewQuery.data.pagination.total} сервисов</Text><Button variant="default" disabled={(overviewPage + 1) * overviewPageSize >= overviewQuery.data.pagination.total} onClick={() => setOverviewPage((page) => page + 1)}>Вперёд</Button></Group>
 
@@ -140,7 +141,7 @@ export function ServiceDashboard() {
       {selectedService && <ServiceStatus query={statusQuery} />}
       {selectedService && <MonitoringMetrics query={metricsQuery} />}
       {selectedService && <CheckHistory chartQuery={chartQuery} query={historyQuery} period={historyPeriod} page={historyPage} pageSize={historyPageSize} onPeriodChange={(value) => { setHistoryPeriod(value); setHistoryPage(0) }} onPageChange={setHistoryPage} onPageSizeChange={(value) => { setHistoryPageSize(Number(value)); setHistoryPage(0) }} />}
-      {selectedService && <Incidents query={incidentsQuery} />}
+      {selectedService && <Incidents query={incidentsQuery} page={incidentsPage} onPageChange={setIncidentsPage} />}
 
       <Modal opened={creating} onClose={() => setCreating(false)} title="Новый сервис">
         {createMutation.error && <Alert mb="sm" color="red">{createMutation.error.message}</Alert>}
@@ -226,17 +227,17 @@ function HistoryTooltip({ active, payload }) {
   </div>
 }
 
-function Incidents({ query }) {
+function Incidents({ query, page, onPageChange }) {
   if (query.isPending) return <Card withBorder><Text c="dimmed">Загрузка инцидентов…</Text></Card>
   if (query.isError) return <Alert color="red">{query.error.message}</Alert>
-  const incidents = query.data
+  const incidents = query.data.items ?? []
   if (incidents.length === 0) return <Card withBorder><Text c="dimmed">Инцидентов пока не было.</Text></Card>
   const duration = (incident) => {
     if (!incident.ended_at) return 'Продолжается'
     const seconds = Math.max(0, Math.round((new Date(incident.ended_at) - new Date(incident.started_at)) / 1000))
     return `${seconds} с`
   }
-  return <Card withBorder><Stack gap="sm"><Title order={3}>Инциденты</Title>{incidents.map((incident) => <div key={incident.id}><Group justify="space-between"><Text fw={600}>{incident.ended_at ? 'Завершённый сбой' : 'Текущий сбой'}</Text><Badge color={incident.ended_at ? 'gray' : 'red'}>{duration(incident)}</Badge></Group><Text size="sm" c="dimmed">Начало: {formatDate(incident.started_at)}</Text>{incident.ended_at && <Text size="sm" c="dimmed">Завершение: {formatDate(incident.ended_at)}</Text>}</div>)}</Stack></Card>
+  return <Card withBorder><Stack gap="sm"><Title order={3}>Инциденты</Title>{incidents.map((incident) => <div key={incident.id}><Group justify="space-between"><Text fw={600}>{incident.ended_at ? 'Завершённый сбой' : 'Текущий сбой'}</Text><Badge color={incident.ended_at ? 'gray' : 'red'}>{duration(incident)}</Badge></Group><Text size="sm" c="dimmed">Начало: {formatDate(incident.started_at)}</Text>{incident.ended_at && <Text size="sm" c="dimmed">Завершение: {formatDate(incident.ended_at)}</Text>}</div>)}<Group justify="space-between"><Button size="xs" variant="default" disabled={page === 0} onClick={() => onPageChange(page - 1)}>Назад</Button><Button size="xs" variant="default" disabled={(page + 1) * 20 >= query.data.total} onClick={() => onPageChange(page + 1)}>Вперёд</Button></Group></Stack></Card>
 }
 
 function ServiceStatus({ query }) {

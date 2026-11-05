@@ -36,6 +36,7 @@ type authentication interface {
 
 type serviceRepository interface {
 	ListByOwner(context.Context, string) ([]serviceconfig.Service, error)
+	ListPageByOwner(context.Context, string, int, int) ([]serviceconfig.Service, int, error)
 	ByIDAndOwner(context.Context, string, string) (serviceconfig.Service, error)
 	Create(context.Context, string, string, string, bool, int, int) (serviceconfig.Service, error)
 	Update(context.Context, string, string, string, string, bool, int, int) (serviceconfig.Service, error)
@@ -47,6 +48,7 @@ type configurationPublisher interface {
 }
 type incidentRepository interface {
 	ListByService(context.Context, string) ([]incident.Incident, error)
+	ListPageByService(context.Context, string, int, int) ([]incident.Incident, int, error)
 }
 
 type handler struct {
@@ -389,12 +391,17 @@ func (handler *handler) listIncidents(writer http.ResponseWriter, request *http.
 		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось проверить доступ к сервису"})
 		return
 	}
-	values, err := handler.incidents.ListByService(request.Context(), service.ID)
+	limit, offset, valid := listPage(request.URL.Query())
+	if !valid {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Некорректная пагинация"})
+		return
+	}
+	values, total, err := handler.incidents.ListPageByService(request.Context(), service.ID, limit, offset)
 	if err != nil {
 		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось получить историю инцидентов"})
 		return
 	}
-	writeJSON(writer, http.StatusOK, values)
+	writeJSON(writer, http.StatusOK, pagedResponse[incident.Incident]{Items: values, Limit: limit, Offset: offset, Total: total})
 }
 
 type credentials struct {
@@ -480,13 +487,44 @@ func (handler *handler) listServices(writer http.ResponseWriter, request *http.R
 	if !ok {
 		return
 	}
-	services, err := handler.services.ListByOwner(request.Context(), currentUser.ID)
+	limit, offset, valid := listPage(request.URL.Query())
+	if !valid {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Некорректная пагинация"})
+		return
+	}
+	services, total, err := handler.services.ListPageByOwner(request.Context(), currentUser.ID, limit, offset)
 	if err != nil {
 		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось получить сервисы"})
 		return
 	}
 
-	writeJSON(writer, http.StatusOK, services)
+	writeJSON(writer, http.StatusOK, pagedResponse[serviceconfig.Service]{Items: services, Limit: limit, Offset: offset, Total: total})
+}
+
+type pagedResponse[T any] struct {
+	Items  []T `json:"items"`
+	Limit  int `json:"limit"`
+	Offset int `json:"offset"`
+	Total  int `json:"total"`
+}
+
+func listPage(query url.Values) (int, int, bool) {
+	limit, offset := 20, 0
+	if value := query.Get("limit"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > 50 {
+			return 0, 0, false
+		}
+		limit = parsed
+	}
+	if value := query.Get("offset"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 0 {
+			return 0, 0, false
+		}
+		offset = parsed
+	}
+	return limit, offset, true
 }
 
 func (handler *handler) createService(writer http.ResponseWriter, request *http.Request) {

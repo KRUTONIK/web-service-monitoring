@@ -73,6 +73,19 @@ func (repository *Repository) ListByOwner(ctx context.Context, ownerID string) (
 	return toServices(records), nil
 }
 
+func (repository *Repository) ListPageByOwner(ctx context.Context, ownerID string, limit, offset int) ([]Service, int, error) {
+	database := repository.database.WithContext(ctx).Where("owner_id = ? AND deleted_at IS NULL", ownerID)
+	var total int64
+	if err := database.Model(&record{}).Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("count user monitored services: %w", err)
+	}
+	var records []record
+	if err := database.Order("created_at DESC, id").Limit(limit).Offset(offset).Find(&records).Error; err != nil {
+		return nil, 0, fmt.Errorf("query user monitored services page: %w", err)
+	}
+	return toServices(records), int(total), nil
+}
+
 func (repository *Repository) ByIDAndOwner(ctx context.Context, ownerID, id string) (Service, error) {
 	var record record
 	database := repository.database.WithContext(ctx).Where("id = ? AND owner_id = ? AND deleted_at IS NULL", id, ownerID).First(&record)
