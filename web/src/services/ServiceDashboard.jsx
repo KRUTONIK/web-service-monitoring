@@ -1,5 +1,5 @@
-import { Alert, Badge, Button, Card, Group, Loader, Modal, Select, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core'
-import { useState } from 'react'
+import { Alert, Badge, Button, Card, Group, Loader, Modal, Select, SimpleGrid, Stack, Table, Text, TextInput, Title } from '@mantine/core'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { apiRequest, jsonRequest } from '../api.js'
@@ -29,8 +29,14 @@ export function ServiceDashboard() {
   const [historyPeriod, setHistoryPeriod] = useState('24h')
   const [historyPage, setHistoryPage] = useState(0)
   const [historyPageSize, setHistoryPageSize] = useState(5)
-  const servicesQuery = useQuery({ queryKey: ['services'], queryFn: () => apiRequest('/api/services') })
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['services'] })
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [overviewPage, setOverviewPage] = useState(0)
+  const [overviewPageSize, setOverviewPageSize] = useState(20)
+  useEffect(() => { const timer = setTimeout(() => { setSearch(searchInput); setOverviewPage(0) }, 300); return () => clearTimeout(timer) }, [searchInput])
+  const overviewQuery = useQuery({ queryKey: ['monitoring-overview', search, statusFilter, overviewPage, overviewPageSize], queryFn: () => apiRequest(`/api/monitoring/overview?search=${encodeURIComponent(search)}&status=${statusFilter}&limit=${overviewPageSize}&offset=${overviewPage * overviewPageSize}`), retry: false, refetchInterval: 10_000 })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['monitoring-overview'] })
   const createMutation = useMutation({
     mutationFn: (service) => apiRequest('/api/services', jsonRequest('POST', service)),
     onSuccess: async (service) => {
@@ -55,7 +61,7 @@ export function ServiceDashboard() {
     },
   })
 
-  const services = servicesQuery.data ?? []
+  const services = overviewQuery.data?.services ?? []
   const currentServiceID = services.some((service) => service.id === selectedID) ? selectedID : services[0]?.id ?? null
   const statusQuery = useQuery({
     queryKey: ['service-status', currentServiceID],
@@ -87,25 +93,28 @@ export function ServiceDashboard() {
   })
   const metricsQuery = useQuery({ queryKey: ['service-metrics', currentServiceID, historyPeriod], queryFn: () => apiRequest(`/api/services/${currentServiceID}/metrics?period=${historyPeriod}`), enabled: Boolean(currentServiceID), retry: false, refetchInterval: 30_000 })
 
-  if (servicesQuery.isPending) return <Loader />
-  if (servicesQuery.isError) return <Alert color="red">{servicesQuery.error.message}</Alert>
+  if (overviewQuery.isPending) return <Loader />
+  if (overviewQuery.isError) return <Alert color="red">{overviewQuery.error.message}</Alert>
 
   const selectedService = services.find((service) => service.id === currentServiceID)
   return (
     <Stack gap="lg">
       <Group justify="space-between">
         <div>
-          <Title order={2}>Сервисы</Title>
-          <Text c="dimmed" size="sm">Добавляйте и настраивайте проверки.</Text>
+          <Title order={2}>Мониторинг сервисов</Title>
+          <Text c="dimmed" size="sm">Текущее состояние всех ваших сервисов.</Text>
         </div>
         <Button onClick={() => setCreating(true)}>Добавить сервис</Button>
       </Group>
 
+      <OverviewCounters summary={overviewQuery.data.summary} />
+      <Group grow align="end"><TextInput label="Поиск" value={searchInput} onChange={(event) => setSearchInput(event.currentTarget.value)} placeholder="Название или URL" /><Select label="Состояние" value={statusFilter} onChange={(value) => { setStatusFilter(value ?? ''); setOverviewPage(0) }} data={[{ value: '', label: 'Все состояния' }, { value: 'available', label: 'Доступные' }, { value: 'unavailable', label: 'Недоступные' }, { value: 'unknown', label: 'Нет данных' }, { value: 'paused', label: 'Отключённые' }]} /><Select label="На странице" value={String(overviewPageSize)} onChange={(value) => { setOverviewPageSize(Number(value)); setOverviewPage(0) }} data={['10', '20', '50']} /></Group>
       {services.length === 0 ? (
         <Card withBorder><Text>Сервисов пока нет. Добавьте первый сервис для мониторинга.</Text></Card>
       ) : (
-        <Select label="Выбранный сервис" data={services.map((service) => ({ value: service.id, label: service.name }))} value={currentServiceID} onChange={(value) => { setSelectedID(value); setHistoryPage(0) }} />
+        <OverviewTable services={services} onSelect={(id) => { setSelectedID(id); setHistoryPage(0) }} />
       )}
+      <Group justify="space-between"><Button variant="default" disabled={overviewPage === 0} onClick={() => setOverviewPage((page) => page - 1)}>Назад</Button><Text size="sm">{overviewQuery.data.pagination.total} сервисов</Text><Button variant="default" disabled={(overviewPage + 1) * overviewPageSize >= overviewQuery.data.pagination.total} onClick={() => setOverviewPage((page) => page + 1)}>Вперёд</Button></Group>
 
       {selectedService && (
         <Card withBorder>
@@ -143,6 +152,15 @@ export function ServiceDashboard() {
       </Modal>
     </Stack>
   )
+}
+
+function OverviewCounters({ summary }) {
+  const values = [{ label: 'Доступны', value: summary.available, color: 'green' }, { label: 'Недоступны', value: summary.unavailable, color: 'red' }, { label: 'Нет данных', value: summary.unknown, color: 'gray' }, { label: 'Отключены', value: summary.paused, color: 'gray' }]
+  return <SimpleGrid cols={{ base: 2, sm: 4 }}>{values.map((item) => <Card key={item.label} withBorder><Text size="sm" c="dimmed">{item.label}</Text><Text fw={700} c={item.color} size="xl">{item.value}</Text></Card>)}</SimpleGrid>
+}
+
+function OverviewTable({ services, onSelect }) {
+  return <Card withBorder p={0}><Table highlightOnHover><Table.Thead><Table.Tr><Table.Th>Сервис</Table.Th><Table.Th>Состояние</Table.Th><Table.Th>HTTP-код</Table.Th><Table.Th>Время ответа</Table.Th><Table.Th>Последняя проверка</Table.Th></Table.Tr></Table.Thead><Table.Tbody>{services.map((item) => <Table.Tr key={item.id} style={{ cursor: 'pointer' }} onClick={() => onSelect(item.id)}><Table.Td><Text fw={600}>{item.name}</Text><Text size="sm" c="dimmed">{item.url}</Text></Table.Td><Table.Td><Badge color={statePresentation[item.status.state].color}>{statePresentation[item.status.state].label}</Badge></Table.Td><Table.Td>{item.status.last_check?.status_code || '—'}</Table.Td><Table.Td>{item.status.last_check ? `${item.status.last_check.response_time_ms} мс` : '—'}</Table.Td><Table.Td>{item.status.last_check ? formatDate(item.status.last_check.checked_at) : '—'}</Table.Td></Table.Tr>)}</Table.Tbody></Table></Card>
 }
 
 function MonitoringMetrics({ query }) {
