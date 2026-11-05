@@ -253,7 +253,27 @@ func (influx *InfluxDB) latestManyQuery(serviceIDs []string) string {
 func (influx *InfluxDB) historyQuery(serviceID string, from time.Time, limit, offset int, aggregateWindow time.Duration) string {
 	aggregate := ""
 	if aggregateWindow > 0 {
-		aggregate = fmt.Sprintf("\n  |> group(columns: [\"service_id\", \"service_url\", \"_field\"])\n  |> aggregateWindow(every: %s, fn: last, createEmpty: false)", aggregateWindow.String())
+		// Pivot before reducing so every selected value belongs to one actual check.
+		// The input is processed newest-first: the first failed check in a window
+		// wins, otherwise the newest successful check remains representative.
+		aggregate = fmt.Sprintf(`
+  |> pivot(rowKey: ["_time", "service_id", "service_url"], columnKey: ["_field"], valueColumn: "_value")
+  |> group(columns: ["service_id", "service_url"])
+  |> window(every: %s)
+  |> sort(columns: ["_time"], desc: true)
+  |> reduce(
+    identity: {_time: time(v: 0), service_id: "", service_url: "", available: true, status_code: 0, response_time_ms: 0, error: "", selected: false},
+    fn: (r, accumulator) => if not accumulator.selected or (accumulator.available and not r.available) then {_time: r._time, service_id: r.service_id, service_url: r.service_url, available: r.available, status_code: r.status_code, response_time_ms: r.response_time_ms, error: r.error, selected: true} else accumulator
+  )`, aggregateWindow.String())
+	}
+	if aggregateWindow > 0 {
+		return fmt.Sprintf(`from(bucket: "%s")
+  |> range(start: %s)
+  |> filter(fn: (r) => r._measurement == "service_check")
+  |> filter(fn: (r) => r.service_id == "%s")%s
+  |> group()
+  |> sort(columns: ["_time"], desc: true)
+  |> limit(n: %d, offset: %d)`, escapeFluxString(influx.bucket), from.UTC().Format(time.RFC3339Nano), escapeFluxString(serviceID), aggregate, limit, offset)
 	}
 	return fmt.Sprintf(`from(bucket: "%s")
   |> range(start: %s)

@@ -115,12 +115,23 @@ func TestParseResultsRejectsDataWithoutRequiredColumn(t *testing.T) {
 	}
 }
 
-func TestHistoryQueryAggregatesAllJobsIntoTimeWindows(t *testing.T) {
+func TestHistoryQueryKeepsOneFailedCheckPerTimeWindow(t *testing.T) {
 	query := NewInfluxDB(nil, "", "", "bucket", "").historyQuery("service-1", time.Date(2026, 11, 5, 0, 0, 0, 0, time.UTC), 1000, 0, time.Hour)
-	group := `|> group(columns: ["service_id", "service_url", "_field"])`
-	aggregate := `|> aggregateWindow(every: 1h0m0s, fn: last, createEmpty: false)`
-	if !strings.Contains(query, group) || !strings.Contains(query, aggregate) || strings.Index(query, group) > strings.Index(query, aggregate) || strings.Contains(query, `rowKey: ["_time", "job_id"`) {
+	pivot := `|> pivot(rowKey: ["_time", "service_id", "service_url"], columnKey: ["_field"], valueColumn: "_value")`
+	window := `|> window(every: 1h0m0s)`
+	reduce := `|> reduce(`
+	if !strings.Contains(query, pivot) || !strings.Contains(query, window) || !strings.Contains(query, reduce) || strings.Index(query, pivot) > strings.Index(query, window) || strings.Index(query, window) > strings.Index(query, reduce) || strings.Contains(query, "aggregateWindow") || !strings.Contains(query, `accumulator.available and not r.available`) {
 		t.Fatalf("unexpected aggregate query: %s", query)
+	}
+}
+
+func TestHistoryParsesRepresentativeFailureWithZeroResponseTime(t *testing.T) {
+	results, err := parseResults(strings.NewReader(`,result,table,_time,service_id,service_url,available,status_code,response_time_ms,error
+,,0,2026-11-05T12:01:00Z,service-1,https://service.test,false,503,0,temporary failure
+,,1,2026-11-05T12:05:00Z,service-1,https://service.test,true,200,17,
+`))
+	if err != nil || len(results) != 2 || results[0].Available || results[0].ResponseTimeMS != 0 || results[0].StatusCode != 503 || results[0].Error != "temporary failure" || !results[1].Available {
+		t.Fatalf("unexpected representative results=%+v err=%v", results, err)
 	}
 }
 
