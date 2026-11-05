@@ -66,6 +66,18 @@ mail_subject_count_is() {
   node -e 'const messages = JSON.parse(process.argv[1]).messages || []; process.exit(messages.filter(message => message.Subject === process.argv[2]).length === Number(process.argv[3]) ? 0 : 1)' "$messages" "$subject" "$expected"
 }
 
+recovery_duration_is() {
+  local expected=$1 messages message_id body
+  messages=$(curl -fsS "${MAILPIT_URL}/api/v1/messages") || return 1
+  message_id=$(node -e 'const messages = JSON.parse(process.argv[1]).messages || []; const found = messages.find(message => message.Subject === process.argv[2]); if (!found) process.exit(1); process.stdout.write(found.ID)' "$messages" "$recovery_subject") || return 1
+  body=$(curl -fsS "${MAILPIT_URL}/view/${message_id}.txt") || return 1
+  if [[ "$body" != *"Продолжительность: ${expected}"* ]]; then
+    echo "Recovery email ${message_id} has an unexpected duration (expected ${expected}):" >&2
+    echo "$body" >&2
+    return 1
+  fi
+}
+
 delivery_is_sent() {
   local event_id=$1
   "${COMPOSE[@]}" exec -T postgres psql -At -U monitoring -d monitoring \
@@ -152,7 +164,7 @@ wait_for 'closed incident' count_is "SELECT COUNT(*) FROM incidents WHERE servic
 wait_for 'published recovery outbox' count_is "SELECT COUNT(*) FROM notification_outbox WHERE service_id='notification-service' AND published_at IS NOT NULL" 2
 wait_for 'one recovery email' mail_subject_count_is "$recovery_subject" 1
 wait_for 'sent recovery delivery' delivery_is_sent notification-resolved
-wait_for 'two-minute recovery duration' bash -c "curl -fsS '${MAILPIT_URL}/api/v1/messages' | grep -q '2m0s'"
+wait_for 'two-minute recovery duration' recovery_duration_is 2m0s
 
 # D. Incidents remain operational when the service disables notifications.
 publish_incident notification-disabled incident.started notifications-disabled-service 2026-11-05T12:03:00Z 503
