@@ -1,6 +1,6 @@
 import { Alert, Badge, Button, Card, Group, Loader, Modal, Select, SimpleGrid, Stack, Table, Text, TextInput, Title } from '@mantine/core'
 import { useEffect, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { apiRequest, jsonRequest } from '../api.js'
 import { ServiceForm } from './ServiceForm.jsx'
@@ -38,7 +38,7 @@ export function ServiceDashboard() {
   const [overviewDirection, setOverviewDirection] = useState('asc')
   const [incidentsPage, setIncidentsPage] = useState(0)
   useEffect(() => { const timer = setTimeout(() => { setSearch(searchInput); setOverviewPage(0) }, 300); return () => clearTimeout(timer) }, [searchInput])
-  const overviewQuery = useQuery({ queryKey: ['monitoring-overview', search, statusFilter, overviewSort, overviewDirection, overviewPage, overviewPageSize], queryFn: () => apiRequest(`/api/monitoring/overview?search=${encodeURIComponent(search)}&status=${statusFilter}&sort=${overviewSort}&direction=${overviewDirection}&limit=${overviewPageSize}&offset=${overviewPage * overviewPageSize}`), retry: false, refetchInterval: 10_000 })
+  const overviewQuery = useQuery({ queryKey: ['monitoring-overview', search, statusFilter, overviewSort, overviewDirection, overviewPage, overviewPageSize], queryFn: () => apiRequest(`/api/monitoring/overview?search=${encodeURIComponent(search)}&status=${statusFilter}&sort=${overviewSort}&direction=${overviewDirection}&limit=${overviewPageSize}&offset=${overviewPage * overviewPageSize}`), placeholderData: keepPreviousData, retry: false, refetchInterval: 10_000 })
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['monitoring-overview'] })
   const createMutation = useMutation({
     mutationFn: (service) => apiRequest('/api/services', jsonRequest('POST', service)),
@@ -104,7 +104,6 @@ export function ServiceDashboard() {
   const metricsQuery = useQuery({ queryKey: ['service-metrics', currentServiceID, historyPeriod], queryFn: () => apiRequest(`/api/services/${currentServiceID}/metrics?period=${historyPeriod}`), enabled: Boolean(currentServiceID), retry: false, refetchInterval: 30_000 })
 
   if (overviewQuery.isPending) return <Loader />
-  if (overviewQuery.isError) return <Alert color="red">{overviewQuery.error.message}</Alert>
 
   const selectedService = selectedServiceQuery.data
   return (
@@ -117,8 +116,9 @@ export function ServiceDashboard() {
         <Button onClick={() => setCreating(true)}>Добавить сервис</Button>
       </Group>
 
+      {overviewQuery.isError && <Alert color="red">{overviewQuery.error.message}</Alert>}
       <OverviewCounters summary={overviewQuery.data.summary} />
-      <Group grow align="end"><TextInput label="Поиск" value={searchInput} onChange={(event) => setSearchInput(event.currentTarget.value)} placeholder="Название или URL" /><Select label="Состояние" value={statusFilter} onChange={(value) => { setStatusFilter(value ?? ''); setOverviewPage(0) }} data={[{ value: '', label: 'Все состояния' }, { value: 'available', label: 'Доступные' }, { value: 'unavailable', label: 'Недоступные' }, { value: 'unknown', label: 'Нет данных' }, { value: 'paused', label: 'Отключённые' }]} /><Select label="Сортировка" value={overviewSort} onChange={(value) => { const sort = value ?? 'state'; setOverviewSort(sort); setOverviewDirection(sort === 'checked_at' ? 'desc' : 'asc'); setOverviewPage(0) }} data={[{ value: 'state', label: 'По состоянию' }, { value: 'name', label: 'По названию' }, { value: 'checked_at', label: 'По времени проверки' }]} /><Select label="Порядок сортировки" value={overviewDirection} onChange={(value) => { setOverviewDirection(value ?? 'asc'); setOverviewPage(0) }} data={[{ value: 'asc', label: overviewSort === 'checked_at' ? 'Сначала старые' : 'По возрастанию' }, { value: 'desc', label: overviewSort === 'checked_at' ? 'Сначала новые' : 'По убыванию' }]} /><Select label="На странице" value={String(overviewPageSize)} onChange={(value) => { setOverviewPageSize(Number(value)); setOverviewPage(0) }} data={['10', '20', '50']} /></Group>
+      <Group grow align="end"><TextInput label="Поиск" value={searchInput} onChange={(event) => setSearchInput(event.currentTarget.value)} placeholder="Название или URL" /><Select label="Состояние" value={statusFilter} onChange={(value) => { if (value !== null && value !== statusFilter) { setStatusFilter(value); setOverviewPage(0) } }} allowDeselect={false} data={[{ value: '', label: 'Все состояния' }, { value: 'available', label: 'Доступные' }, { value: 'unavailable', label: 'Недоступные' }, { value: 'unknown', label: 'Нет данных' }, { value: 'paused', label: 'Отключённые' }]} /><Select label="Сортировка" value={overviewSort} onChange={(value) => { if (value && value !== overviewSort) { setOverviewSort(value); setOverviewDirection(value === 'checked_at' ? 'desc' : 'asc'); setOverviewPage(0) } }} allowDeselect={false} data={[{ value: 'state', label: 'По состоянию' }, { value: 'name', label: 'По названию' }, { value: 'checked_at', label: 'По времени проверки' }]} /><Select label="Порядок сортировки" value={overviewDirection} onChange={(value) => { if (value && value !== overviewDirection) { setOverviewDirection(value); setOverviewPage(0) } }} allowDeselect={false} data={[{ value: 'asc', label: overviewSort === 'checked_at' ? 'Сначала старые' : 'По возрастанию' }, { value: 'desc', label: overviewSort === 'checked_at' ? 'Сначала новые' : 'По убыванию' }]} /><Select label="На странице" value={String(overviewPageSize)} onChange={(value) => { const size = Number(value); if (value && size !== overviewPageSize) { setOverviewPageSize(size); setOverviewPage(0) } }} allowDeselect={false} data={['10', '20', '50']} /></Group>
       {services.length === 0 ? (
         <Card withBorder><Text>Сервисов пока нет. Добавьте первый сервис для мониторинга.</Text></Card>
       ) : (
@@ -180,8 +180,8 @@ function MonitoringMetrics({ query }) {
   const metrics = query.data
   if (metrics.total_checks === 0) return <Card withBorder><Title order={3}>Показатели мониторинга</Title><Text c="dimmed">За выбранный период проверок не было.</Text></Card>
   const duration = metrics.downtime_seconds >= 60 ? `${Math.floor(metrics.downtime_seconds / 60)} мин ${metrics.downtime_seconds % 60} с` : `${metrics.downtime_seconds} с`
-  const responseValue = metrics.has_response_metrics ? `${Math.round(metrics.average_response_ms)} мс` : '—'
-  const p95Value = metrics.has_response_metrics ? `${metrics.p95_response_ms} мс` : '—'
+  const responseValue = metrics.has_response_metrics && Number.isFinite(metrics.average_response_ms) ? `${Math.round(metrics.average_response_ms)} мс` : '—'
+  const p95Value = metrics.has_response_metrics && Number.isFinite(metrics.p95_response_ms) ? `${metrics.p95_response_ms} мс` : '—'
   return <Card withBorder><Stack gap="sm"><Title order={3}>Показатели мониторинга</Title><SimpleGrid cols={{ base: 1, sm: 3 }}><Metric label="Успешные проверки" value={`${metrics.success_rate.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}%`} /><Metric label="Среднее время ответа" value={responseValue} /><Metric label="P95" value={p95Value} /><Metric label="Инциденты" value={metrics.incident_count} /><Metric label="Время недоступности" value={duration} /></SimpleGrid></Stack></Card>
 }
 
