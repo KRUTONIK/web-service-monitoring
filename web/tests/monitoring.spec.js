@@ -130,13 +130,8 @@ test('показывает историю и запрашивает выбран
 	await openService(page)
   await expect(page.getByRole('heading', { name: 'История проверок' })).toBeVisible()
   await expect(page.getByText('Ошибка соединения')).toBeVisible()
-  const points = page.getByTestId('history-point')
-  await expect(points).toHaveCount(2)
-  const coordinates = await points.evaluateAll((elements) => elements.map((element) => Number(element.getAttribute('cx'))))
-  expect(coordinates[0]).toBeLessThan(coordinates[1])
-  await points.nth(0).hover()
-  await expect(page.getByText('HTTP-код: 503')).toBeVisible()
-  await expect(page.getByText('Время ответа: 42 мс')).toBeVisible()
+  await expect(page.getByTestId('history-chart').locator('svg')).toBeVisible()
+  await expect(page.getByTestId('history-chart').locator('.recharts-dot')).toHaveCount(0)
   await page.getByRole('textbox', { name: 'Период истории' }).click()
   await page.getByRole('option', { name: '7 дней', exact: true }).click()
   await expect(page.getByRole('textbox', { name: 'Период истории' })).toHaveValue('7 дней')
@@ -149,7 +144,7 @@ test('пагинирует историю отдельно от графика �
     requests.push(url.search)
     const limit = Number(url.searchParams.get('limit'))
     const offset = Number(url.searchParams.get('offset'))
-    const checks = limit === 10000 ? [checkResult({ response_time_ms: 10 }), checkResult({ response_time_ms: 20 })] : Array.from({ length: limit }, (_, index) => checkResult({ checked_at: `2026-11-01T10:${String(29 - index - offset).padStart(2, '0')}:00Z`, response_time_ms: index + offset }))
+    const checks = url.searchParams.get('chart') === 'true' ? [checkResult({ response_time_ms: 10 }), checkResult({ response_time_ms: 20 })] : Array.from({ length: limit }, (_, index) => checkResult({ checked_at: `2026-11-01T10:${String(29 - index - offset).padStart(2, '0')}:00Z`, response_time_ms: index + offset }))
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ checks, limit, offset }) })
   } })
   await page.goto('/')
@@ -160,7 +155,28 @@ test('пагинирует историю отдельно от графика �
   await page.getByRole('textbox', { name: 'Записей на странице' }).click()
   await page.getByRole('option', { name: '10', exact: true }).click()
   await expect.poll(() => requests.some((request) => request.includes('limit=11') && request.includes('offset=0'))).toBeTruthy()
-  expect(requests.some((request) => request.includes('limit=10000') && request.includes('chart=true'))).toBeTruthy()
+  expect(requests.some((request) => request.includes('limit=500') && request.includes('chart=true'))).toBeTruthy()
+})
+
+test('сохраняет график при задержке ответа таблицы и не запрашивает его повторно', async ({ page }) => {
+  let chartRequests = 0
+  let releaseTable
+  const tableResponse = new Promise((resolve) => { releaseTable = resolve })
+  await mockDashboard(page, { checksHandler: async (route) => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('chart') === 'true') { chartRequests += 1; return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ checks: [checkResult()], limit: 500, offset: 0 }) }) }
+    if (url.searchParams.get('offset') === '5') await tableResponse
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ checks: Array.from({ length: 6 }, (_, index) => checkResult({ checked_at: `2026-11-01T10:${20 - index}:00Z` })), limit: 6, offset: Number(url.searchParams.get('offset')) }) })
+  } })
+  await page.goto('/')
+  await openService(page)
+  await expect(page.getByTestId('history-chart').locator('svg')).toBeVisible()
+  await page.getByRole('button', { name: 'Вперёд' }).click()
+  await expect(page.getByTestId('history-chart').locator('svg')).toBeVisible()
+  expect(chartRequests).toBe(1)
+  releaseTable()
+  await expect(page.getByText('Страница 2')).toBeVisible()
+  expect(chartRequests).toBe(1)
 })
 
 test('обновляет оперативные данные текущего экрана автоматически', async ({ page }) => {
