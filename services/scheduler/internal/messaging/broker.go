@@ -53,8 +53,11 @@ func (broker *Broker) PublishJobs(ctx context.Context, services []serviceconfig.
 	confirms := channel.NotifyPublish(make(chan amqp.Confirmation, 1))
 	returns := channel.NotifyReturn(make(chan amqp.Return, 1))
 
-	scheduledAt := time.Now().UTC()
 	for _, service := range services {
+		scheduledAt := service.ScheduledAt
+		if scheduledAt.IsZero() {
+			scheduledAt = time.Now().UTC()
+		}
 		job := jobs.NewCheckJob(service.ID, service.URL, service.TimeoutSeconds, scheduledAt)
 		body, err := json.Marshal(job)
 		if err != nil {

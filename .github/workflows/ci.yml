@@ -320,6 +320,10 @@ jobs:
           bash scripts/incident-redelivery-test.sh
           bash scripts/incident-queue-compatibility-test.sh
 
+      - name: Run notification integration test
+        shell: bash
+        run: bash scripts/notification-integration-test.sh
+
   build:
     name: Build application
     runs-on: ubuntu-latest

@@ -8,11 +8,18 @@ option go_package = "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go
 
 service MetricsService {
   rpc GetLatestCheck(GetLatestCheckRequest) returns (GetLatestCheckResponse);
+  rpc GetLatestChecks(GetLatestChecksRequest) returns (GetLatestChecksResponse);
+  rpc GetCheckHistory(GetCheckHistoryRequest) returns (GetCheckHistoryResponse);
+  rpc GetCheckSummary(GetCheckSummaryRequest) returns (GetCheckSummaryResponse);
 }
 
 message GetLatestCheckRequest {
   string service_id = 1;
 }
+
+message GetLatestChecksRequest { repeated string service_ids = 1; }
+
+message GetLatestChecksResponse { repeated CheckResult checks = 1; }
 
 message GetLatestCheckResponse {
   string service_url = 1;
@@ -23,3 +30,28 @@ message GetLatestCheckResponse {
   string error = 6;
   string service_id = 7;
 }
+
+message GetCheckHistoryRequest {
+  string service_id = 1;
+  google.protobuf.Timestamp from = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+  int64 aggregate_window_seconds = 5;
+}
+
+message CheckResult {
+  string service_url = 1;
+  google.protobuf.Timestamp checked_at = 2;
+  bool available = 3;
+  int32 status_code = 4;
+  int64 response_time_ms = 5;
+  string error = 6;
+  string service_id = 7;
+}
+
+message GetCheckHistoryResponse {
+  repeated CheckResult checks = 1;
+}
+
+message GetCheckSummaryRequest { string service_id = 1; google.protobuf.Timestamp from = 2; }
+message GetCheckSummaryResponse { int64 total_checks = 1; int64 successful_checks = 2; bool has_response_metrics = 3; double average_response_ms = 4; int64 p95_response_ms = 5; }

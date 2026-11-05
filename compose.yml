@@ -57,6 +57,8 @@ services:
         condition: service_healthy
       scheduler:
         condition: service_started
+    deploy:
+      replicas: 2
 
   scheduler:
     build:
@@ -66,7 +68,7 @@ services:
     environment:
       API_GRPC_ADDRESS: api:9091
       RABBITMQ_URL: amqp://monitoring:monitoring@rabbitmq:5672/
-      SCHEDULER_INTERVAL: 10s
+      SCHEDULER_INTERVAL: 1s
     depends_on:
       api:
         condition: service_healthy
@@ -90,6 +92,33 @@ services:
     depends_on:
       influxdb:
         condition: service_healthy
+
+  notification:
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
+    restart: on-failure
+    environment:
+      RABBITMQ_URL: amqp://monitoring:monitoring@rabbitmq:5672/
+      POSTGRES_DSN: postgres://monitoring:monitoring@postgres:5432/monitoring?sslmode=disable
+      SMTP_ADDRESS: ${SMTP_ADDRESS:-mailpit:1025}
+      SMTP_FROM: ${SMTP_FROM:-monitoring@local.test}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_TLS: ${SMTP_TLS:-false}
+      WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-http://localhost:5173}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  mailpit:
+    image: axllent/mailpit:v1.27.4
+    ports:
+      - "127.0.0.1:8025:8025"
 
   web:
     build:

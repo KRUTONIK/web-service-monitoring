@@ -106,7 +106,7 @@ Checker считает некорректные задания постоянн�
 Синхронные внутренние запросы выполняются по gRPC:
 
 - Scheduler Service вызывает `ConfigurationService.GetSnapshot` в API Service;
-- API Service вызывает `MetricsService.GetLatestCheck` в Metrics Service.
+- API Service вызывает `MetricsService.GetLatestCheck` и `MetricsService.GetCheckHistory` в Metrics Service.
 
 RabbitMQ используется для асинхронных обновлений конфигурации и заданий
 проверок, но не как транспорт RPC.
@@ -117,9 +117,12 @@ API Service предоставляет:
 |---|---|---|
 | `GET` | `/health` | готовность процесса API |
 | `GET` | `/api/checks/latest` | последняя проверка за предыдущие 24 часа |
+| `GET` | `/api/services/{id}/checks?period=24h&limit=100&offset=0` | история проверок сервиса за `24h`, `7d` или `30d` |
 
 Web UI показывает URL, доступность, HTTP-код, время ответа и время проверки;
 кнопка обновления повторно запрашивает последнюю сохранённую проверку.
+Для выбранного сервиса также доступна история с графиком времени ответа и таблицей
+результатов. Данные читаются через Metrics Service из InfluxDB.
 
 ## Конфигурация
 

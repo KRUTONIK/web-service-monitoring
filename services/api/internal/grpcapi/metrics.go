@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type MetricsClient struct {
@@ -45,4 +46,42 @@ func (client *MetricsClient) Latest(ctx context.Context, serviceID string) (moni
 		ServiceID: response.ServiceId, ServiceURL: response.ServiceUrl, CheckedAt: response.CheckedAt.AsTime(), Available: response.Available,
 		StatusCode: int(response.StatusCode), ResponseTimeMS: response.ResponseTimeMs, Error: response.Error,
 	}, nil
+}
+
+func (client *MetricsClient) LatestMany(ctx context.Context, serviceIDs []string) ([]monitoring.Result, error) {
+	requestContext, cancel := context.WithTimeout(ctx, client.timeout)
+	defer cancel()
+	response, err := client.client.GetLatestChecks(requestContext, &metricsv1.GetLatestChecksRequest{ServiceIds: serviceIDs})
+	if err != nil {
+		return nil, fmt.Errorf("request latest checks: %w", err)
+	}
+	results := make([]monitoring.Result, 0, len(response.Checks))
+	for _, check := range response.Checks {
+		results = append(results, monitoring.Result{ServiceID: check.ServiceId, ServiceURL: check.ServiceUrl, CheckedAt: check.CheckedAt.AsTime(), Available: check.Available, StatusCode: int(check.StatusCode), ResponseTimeMS: check.ResponseTimeMs, Error: check.Error})
+	}
+	return results, nil
+}
+
+func (client *MetricsClient) History(ctx context.Context, serviceID string, from time.Time, limit, offset int, aggregateWindow time.Duration) (monitoring.History, error) {
+	requestContext, cancel := context.WithTimeout(ctx, client.timeout)
+	defer cancel()
+	response, err := client.client.GetCheckHistory(requestContext, &metricsv1.GetCheckHistoryRequest{ServiceId: serviceID, From: timestamppb.New(from), Limit: int32(limit), Offset: int32(offset), AggregateWindowSeconds: int64(aggregateWindow.Seconds())})
+	if err != nil {
+		return monitoring.History{}, fmt.Errorf("request check history: %w", err)
+	}
+	checks := make([]monitoring.Result, 0, len(response.Checks))
+	for _, check := range response.Checks {
+		checks = append(checks, monitoring.Result{ServiceID: check.ServiceId, ServiceURL: check.ServiceUrl, CheckedAt: check.CheckedAt.AsTime(), Available: check.Available, StatusCode: int(check.StatusCode), ResponseTimeMS: check.ResponseTimeMs, Error: check.Error})
+	}
+	return monitoring.History{Checks: checks, Limit: limit, Offset: offset}, nil
+}
+
+func (client *MetricsClient) Summary(ctx context.Context, serviceID string, from time.Time) (monitoring.Summary, error) {
+	requestContext, cancel := context.WithTimeout(ctx, client.timeout)
+	defer cancel()
+	response, err := client.client.GetCheckSummary(requestContext, &metricsv1.GetCheckSummaryRequest{ServiceId: serviceID, From: timestamppb.New(from)})
+	if err != nil {
+		return monitoring.Summary{}, fmt.Errorf("request check summary: %w", err)
+	}
+	return monitoring.Summary{TotalChecks: response.TotalChecks, SuccessfulChecks: response.SuccessfulChecks, HasResponseMetrics: response.HasResponseMetrics, AverageResponseMS: response.AverageResponseMs, P95ResponseMS: response.P95ResponseMs}, nil
 }

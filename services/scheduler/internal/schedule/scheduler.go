@@ -17,11 +17,17 @@ type Scheduler struct {
 	state         *serviceconfig.State
 	publisher     jobPublisher
 	mutex         sync.Mutex
-	lastScheduled map[string]time.Time
+	nextScheduled map[string]time.Time
+	intervals     map[string]time.Duration
 }
 
 func New(state *serviceconfig.State, publisher jobPublisher) *Scheduler {
-	return &Scheduler{state: state, publisher: publisher, lastScheduled: make(map[string]time.Time)}
+	return &Scheduler{
+		state:         state,
+		publisher:     publisher,
+		nextScheduled: make(map[string]time.Time),
+		intervals:     make(map[string]time.Duration),
+	}
 }
 
 func (scheduler *Scheduler) Schedule(ctx context.Context) error {
@@ -38,9 +44,23 @@ func (scheduler *Scheduler) scheduleAt(ctx context.Context, now time.Time) error
 		if interval <= 0 {
 			interval = time.Minute
 		}
-		if last, exists := scheduler.lastScheduled[service.ID]; !exists || now.Sub(last) >= interval {
-			due = append(due, service)
+		if previous, exists := scheduler.intervals[service.ID]; exists && previous != interval {
+			scheduler.nextScheduled[service.ID] = now
 		}
+		scheduler.intervals[service.ID] = interval
+
+		next, exists := scheduler.nextScheduled[service.ID]
+		if !exists {
+			next = now
+		}
+		if now.Before(next) {
+			continue
+		}
+		if missed := now.Sub(next) / interval; missed > 0 {
+			next = next.Add(missed * interval)
+		}
+		service.ScheduledAt = next
+		due = append(due, service)
 	}
 	if len(due) == 0 {
 		return nil
@@ -49,7 +69,8 @@ func (scheduler *Scheduler) scheduleAt(ctx context.Context, now time.Time) error
 		return fmt.Errorf("publish scheduled jobs: %w", err)
 	}
 	for _, service := range due {
-		scheduler.lastScheduled[service.ID] = now
+		interval := time.Duration(service.IntervalSeconds) * time.Second
+		scheduler.nextScheduled[service.ID] = service.ScheduledAt.Add(interval)
 	}
 	return nil
 }

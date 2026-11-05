@@ -13,8 +13,9 @@ func TestTransitionEmitsOnlyAvailabilityChanges(t *testing.T) {
 	previous := check.Result{ServiceID: "service-1", Available: true}
 	failed := check.Result{JobID: "job-failed", ServiceID: "service-1", Available: false, CheckedAt: checkedAt}
 
-	if event := Transition(previous, false, failed); event != nil {
-		t.Fatalf("first result produced event: %#v", event)
+	firstFailure := Transition(previous, false, failed)
+	if firstFailure == nil || firstFailure.Type != contracts.Started || firstFailure.ID != "job-failed:incident.started" {
+		t.Fatalf("first failed result event = %#v", firstFailure)
 	}
 	started := Transition(previous, true, failed)
 	if started == nil || started.Type != contracts.Started || started.ID != "job-failed:incident.started" || !started.OccurredAt.Equal(checkedAt) {

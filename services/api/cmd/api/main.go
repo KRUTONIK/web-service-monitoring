@@ -64,6 +64,7 @@ func main() {
 			log.Printf("consume incident events: %v", err)
 		}
 	}()
+	go messaging.RunNotificationOutbox(ctx, postgres, cfg.RabbitMQURL)
 	metricsClient, err := grpcapi.OpenMetricsClient(cfg.MetricsTarget, cfg.RequestTimeout)
 	if err != nil {
 		log.Fatalf("initialize Metrics Service client: %v", err)
