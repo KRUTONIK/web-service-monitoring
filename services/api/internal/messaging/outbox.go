@@ -25,12 +25,12 @@ func PublishNotificationOutbox(ctx context.Context, database *gorm.DB, rabbitURL
 	if err != nil {
 		return err
 	}
-	defer connection.Close()
+	defer func() { _ = connection.Close() }()
 	channel, err := connection.Channel()
 	if err != nil {
 		return err
 	}
-	defer channel.Close()
+	defer func() { _ = channel.Close() }()
 	if _, err = channel.QueueDeclare(contractsmessaging.NotificationEventsQueue, true, false, false, false, nil); err != nil {
 		return err
 	}
