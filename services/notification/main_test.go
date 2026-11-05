@@ -28,3 +28,13 @@ func TestComposeFailureAndRecovery(t *testing.T) {
 		t.Fatalf("recovery message: %q %q", subject, body)
 	}
 }
+
+func TestSendRejectsInvalidAddressesBeforeConnecting(t *testing.T) {
+	event := notifications.Event{Recipient: "owner@example.test\r\nBcc: other@example.test"}
+	if err := Send(SMTPConfig{Address: "127.0.0.1:1", From: "monitoring@example.test"}, event); err == nil {
+		t.Fatal("expected invalid recipient error")
+	}
+	if err := Send(SMTPConfig{Address: "127.0.0.1:1", From: "monitoring@example.test\r\nBcc: other@example.test"}, notifications.Event{Recipient: "owner@example.test"}); err == nil {
+		t.Fatal("expected invalid sender error")
+	}
+}

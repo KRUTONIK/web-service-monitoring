@@ -11,7 +11,9 @@ const intervals = [
 
 export function ServiceForm({ service, onSubmit, pending, submitLabel = 'Сохранить' }) {
   const parsed = service ? new URL(service.url) : null
-  const [form, setForm] = useState({ ...(service ?? emptyService), url: parsed ? `${parsed.host}${parsed.pathname}${parsed.search}` : '', protocol: parsed ? parsed.protocol.slice(0, -1) : 'https' })
+  // Older API responses predate this setting.  Keep the value explicit so
+  // JSON serialization never silently drops it on an unrelated edit.
+  const [form, setForm] = useState({ ...emptyService, ...(service ?? {}), notifications_enabled: service?.notifications_enabled === true, url: parsed ? `${parsed.host}${parsed.pathname}${parsed.search}` : '', protocol: parsed ? parsed.protocol.slice(0, -1) : 'https' })
   const [error, setError] = useState('')
 
   function submit(event) {
