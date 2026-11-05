@@ -1,5 +1,5 @@
 import { Alert, Badge, Button, Card, Group, Loader, Modal, SimpleGrid, Stack, Text, Title } from '@mantine/core'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { apiRequest, jsonRequest } from '../api.js'
 import { ServiceForm } from './ServiceForm.jsx'
@@ -28,11 +28,9 @@ function Metrics({ serviceID, period }) {
 
 function Incidents({ serviceID }) {
   const [page, setPage] = useState(0)
-  const query = useQuery({ queryKey: ['incidents', serviceID, page], queryFn: () => apiRequest(`/api/services/${serviceID}/incidents?limit=20&offset=${page * 20}`), retry: false, refetchInterval: 10_000 })
-  if (query.isPending) return <Card withBorder><Text c="dimmed">Загрузка инцидентов…</Text></Card>
-  if (query.isError) return <Alert color="red">{query.error.message}</Alert>
-  const items = query.data.items ?? []; if (!items.length) return <Card withBorder><Text c="dimmed">Инцидентов пока не было.</Text></Card>
-  return <Card withBorder><Stack gap="sm"><Title order={3}>Инциденты</Title>{items.map((item) => { const seconds = item.ended_at ? Math.max(0, Math.round((new Date(item.ended_at) - new Date(item.started_at)) / 1000)) : null; return <div key={item.id}><Group justify="space-between"><Text fw={600}>{item.ended_at ? 'Завершённый сбой' : 'Текущий сбой'}</Text><Badge color={item.ended_at ? 'gray' : 'red'}>{seconds === null ? 'Продолжается' : `${seconds} с`}</Badge></Group><Text size="sm" c="dimmed">Начало: {formatDate(item.started_at)}</Text>{item.ended_at && <Text size="sm" c="dimmed">Завершение: {formatDate(item.ended_at)}</Text>}</div>})}<Group justify="space-between"><Button size="xs" variant="default" disabled={page === 0 || query.isFetching} onClick={() => setPage((value) => value - 1)}>Назад</Button><Button size="xs" variant="default" disabled={(page + 1) * 20 >= query.data.total || query.isFetching} onClick={() => setPage((value) => value + 1)}>Вперёд</Button></Group></Stack></Card>
+  const query = useQuery({ queryKey: ['incidents', serviceID, page], queryFn: () => apiRequest(`/api/services/${serviceID}/incidents?limit=20&offset=${page * 20}`), placeholderData: keepPreviousData, retry: false, refetchInterval: 10_000 })
+  const items = query.data?.items ?? []
+  return <Card withBorder data-testid="incidents"><Stack gap="sm"><Title order={3}>Инциденты</Title>{query.isPending ? <Text c="dimmed">Загрузка инцидентов…</Text> : query.isError ? <Alert color="red">{query.error.message}</Alert> : !items.length ? <Text c="dimmed">Инцидентов пока не было.</Text> : items.map((item) => { const seconds = item.ended_at ? Math.max(0, Math.round((new Date(item.ended_at) - new Date(item.started_at)) / 1000)) : null; return <div key={item.id}><Group justify="space-between"><Text fw={600}>{item.ended_at ? 'Завершённый сбой' : 'Текущий сбой'}</Text><Badge color={item.ended_at ? 'gray' : 'red'}>{seconds === null ? 'Продолжается' : `${seconds} с`}</Badge></Group><Text size="sm" c="dimmed">Начало: {formatDate(item.started_at)}</Text>{item.ended_at && <Text size="sm" c="dimmed">Завершение: {formatDate(item.ended_at)}</Text>}</div> })}{query.isFetching && !query.isPending && <Text size="sm" c="dimmed">Обновление инцидентов…</Text>}<Group justify="space-between"><Button size="xs" variant="default" disabled={page === 0 || query.isFetching} onClick={() => setPage((value) => value - 1)}>Назад</Button><Button size="xs" variant="default" disabled={query.isPending || (page + 1) * 20 >= (query.data?.total ?? 0) || query.isFetching} onClick={() => setPage((value) => value + 1)}>Вперёд</Button></Group></Stack></Card>
 }
 
 export function ServiceDetailsPage({ serviceID, onNavigate }) {

@@ -137,6 +137,26 @@ test('показывает историю и запрашивает выбран
   await expect(page.getByRole('textbox', { name: 'Период истории' })).toHaveValue('7 дней')
 })
 
+for (const scenario of [
+  ['успех, ошибка, успех', [checkResult({ checked_at: '2026-11-01T12:00:00Z', response_time_ms: 100 }), checkResult({ checked_at: '2026-11-01T12:00:10Z', available: false, status_code: 503, response_time_ms: 500 }), checkResult({ checked_at: '2026-11-01T12:00:20Z', response_time_ms: 110 })], 1],
+  ['успех, две ошибки, успех', [checkResult({ checked_at: '2026-11-01T12:00:00Z' }), checkResult({ checked_at: '2026-11-01T12:00:10Z', available: false, status_code: 503 }), checkResult({ checked_at: '2026-11-01T12:00:20Z', available: false, status_code: 504 }), checkResult({ checked_at: '2026-11-01T12:00:30Z' })], 2],
+  ['только успехи', [checkResult({ checked_at: '2026-11-01T12:00:00Z', response_time_ms: 0 }), checkResult({ checked_at: '2026-11-01T12:00:10Z' })], 0],
+  ['только ошибки', [checkResult({ checked_at: '2026-11-01T12:00:00Z', available: false, status_code: 503, response_time_ms: 0 }), checkResult({ checked_at: '2026-11-01T12:00:10Z', available: false, status_code: 503 })], 2],
+  ['один успех', [checkResult({ checked_at: '2026-11-01T12:00:00Z', response_time_ms: 0 })], 0],
+  ['одна ошибка', [checkResult({ checked_at: '2026-11-01T12:00:00Z', available: false, status_code: 503, response_time_ms: 0 })], 1],
+  ['длинный пропуск', [checkResult({ checked_at: '2026-11-01T12:00:00Z' }), checkResult({ checked_at: '2026-11-01T14:00:00Z', available: false, status_code: 503 })], 1],
+]) {
+  test(`отображает ошибки на графике: ${scenario[0]}`, async ({ page }) => {
+    await mockDashboard(page, { checks: scenario[1] })
+    await page.goto('/')
+    await openService(page)
+    const chart = page.getByTestId('history-chart')
+    await expect(chart.locator('svg')).toBeVisible()
+    await expect(chart.locator('.recharts-scatter-symbol')).toHaveCount(scenario[2])
+    await expect(chart.locator('.recharts-dot')).toHaveCount(0)
+  })
+}
+
 test('пагинирует историю отдельно от графика и меняет размер страницы', async ({ page }) => {
   const requests = []
   await mockDashboard(page, { checksHandler: (route) => {
@@ -266,6 +286,27 @@ test('показывает открытый и завершённый инцид
   await expect(page.getByText('Текущий сбой')).toBeVisible()
   await expect(page.getByText('Завершённый сбой')).toBeVisible()
   await expect(page.getByText('90 с')).toBeVisible()
+})
+
+test('сохраняет карточку инцидентов при задержке следующей страницы', async ({ page }) => {
+  let release
+  const delayed = new Promise((resolve) => { release = resolve })
+  const incidents = Array.from({ length: 21 }, (_, index) => ({ id: `incident-${index}`, service_id: service.id, started_at: `2026-11-01T${String(index % 10).padStart(2, '0')}:00:00Z`, ended_at: null }))
+  await mockDashboard(page)
+  await page.route('**/api/services/*/incidents?**', async (route) => {
+    const offset = Number(new URL(route.request().url()).searchParams.get('offset'))
+    if (offset === 20) await delayed
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: incidents.slice(offset, offset + 20), limit: 20, offset, total: incidents.length }) })
+  })
+  await page.goto('/')
+  await openService(page)
+  const card = page.getByTestId('incidents')
+  await expect(card.getByRole('heading', { name: 'Инциденты' })).toBeVisible()
+  await card.getByRole('button', { name: 'Вперёд' }).click()
+  await expect(card.getByRole('heading', { name: 'Инциденты' })).toBeVisible()
+  await expect(card.getByText('Обновление инцидентов…')).toBeVisible()
+  release()
+  await expect(card.getByText('Начало: 01.11.2026')).toBeVisible()
 })
 
 test('показывает устаревший результат как неактуальные данные', async ({ page }) => {

@@ -1,6 +1,6 @@
 import { Card, Text } from '@mantine/core'
 import { useQuery } from '@tanstack/react-query'
-import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Line, LineChart, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis } from 'recharts'
 import { apiRequest } from '../api.js'
 
 function chartData(checks) {
@@ -22,5 +22,6 @@ export function HistoryChart({ serviceID, period }) {
   if (query.isPending) return <Card withBorder data-testid="history-chart"><Text c="dimmed">Загрузка графика…</Text></Card>
   if (query.isError) return <Card withBorder data-testid="history-chart"><Text c="red">{query.error.message}</Text></Card>
   const data = chartData(query.data.checks ?? [])
-  return <Card withBorder data-testid="history-chart">{data.length === 0 ? <Text c="dimmed">Нет данных для графика.</Text> : <div style={{ height: 260 }}><ResponsiveContainer><LineChart data={data}><XAxis dataKey="time" type="number" scale="time" tickFormatter={(value) => new Date(value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} /><YAxis unit=" мс" /><Tooltip content={<HistoryTooltip />} /><Line dataKey="success" name="Успешно" stroke="#40c057" strokeWidth={2} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} /><Line dataKey="failure" name="Ошибка" stroke="#fa5252" strokeWidth={2} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} /></LineChart></ResponsiveContainer></div>}</Card>
+  const failures = data.filter((point) => point.failure !== null && point.failure !== undefined)
+  return <Card withBorder data-testid="history-chart">{data.length === 0 ? <Text c="dimmed">Нет данных для графика.</Text> : <div style={{ height: 260 }}><ResponsiveContainer><LineChart data={data}><XAxis dataKey="time" type="number" scale="time" tickFormatter={(value) => new Date(value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} /><YAxis unit=" мс" /><Tooltip content={<HistoryTooltip />} /><Line dataKey="success" name="Успешно" stroke="#40c057" strokeWidth={2} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} /><Line dataKey="failure" name="Ошибка" stroke="#fa5252" strokeWidth={2} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} /><Scatter data={failures} dataKey="failure" name="Сбой" fill="#fa5252" shape="diamond" isAnimationActive={false} /></LineChart></ResponsiveContainer></div>}</Card>
 }
