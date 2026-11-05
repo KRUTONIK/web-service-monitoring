@@ -166,6 +166,9 @@ test('распределяет десять проверок с интервал
   const x = await dots.evaluateAll((elements) => elements.map((element) => Number(element.getAttribute('cx'))))
   expect(new Set(x.map((value) => value.toFixed(2))).size).toBe(10)
   expect(Math.max(...x) - Math.min(...x)).toBeGreaterThan(200)
+  const colors = await dots.evaluateAll((elements) => elements.map((element) => element.getAttribute('fill')))
+  expect(colors).toEqual(['#40c057', '#fa5252', '#40c057', '#fa5252', '#40c057', '#fa5252', '#40c057', '#fa5252', '#40c057', '#fa5252'])
+  await expect(page.getByTestId('history-chart').locator('.recharts-line')).toHaveCount(1)
 })
 
 test('пагинирует историю отдельно от графика и меняет размер страницы', async ({ page }) => {
