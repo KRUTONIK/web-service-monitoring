@@ -66,7 +66,7 @@ async function mockDashboard(page, { services = [service], status = serviceStatu
   })
   await page.route('**/api/services', (route) => {
     if (route.request().method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(created ? [...services, createdService] : services) })
-    expect(route.request().postDataJSON()).toEqual({ name: 'Тестовый сервис', url: 'https://new.example', enabled: true, interval_seconds: 60, timeout_seconds: 5 })
+    expect(route.request().postDataJSON()).toEqual({ name: 'Тестовый сервис', url: 'https://new.example', enabled: true, notifications_enabled: false, interval_seconds: 60, timeout_seconds: 5 })
     created = true
     return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(createdService) })
   })
@@ -410,7 +410,7 @@ test('изменяет сервис', async ({ page }) => {
   await mockDashboard(page, { services })
   await page.route('**/api/services/service-1', (route) => {
     if (route.request().method() === 'GET') return route.fallback()
-    expect(route.request().postDataJSON()).toEqual({ name: updated.name, url: updated.url, enabled: true, interval_seconds: 30, timeout_seconds: 7 })
+    expect(route.request().postDataJSON()).toEqual({ name: updated.name, url: updated.url, enabled: true, notifications_enabled: false, interval_seconds: 30, timeout_seconds: 7 })
     services[0] = updated
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify(updated) })
   })

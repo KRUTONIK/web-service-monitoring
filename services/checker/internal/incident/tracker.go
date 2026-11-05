@@ -9,12 +9,15 @@ import (
 
 // Transition returns an event only for a confirmed availability transition.
 func Transition(previous check.Result, hasPrevious bool, current check.Result) *contracts.Event {
-	if !hasPrevious || previous.Available == current.Available {
+	if !hasPrevious && current.Available {
+		return nil
+	}
+	if hasPrevious && previous.Available == current.Available {
 		return nil
 	}
 	eventType := contracts.Resolved
 	if !current.Available {
 		eventType = contracts.Started
 	}
-	return &contracts.Event{ID: fmt.Sprintf("%s:%s", current.JobID, eventType), Type: eventType, ServiceID: current.ServiceID, OccurredAt: current.CheckedAt}
+	return &contracts.Event{ID: fmt.Sprintf("%s:%s", current.JobID, eventType), Type: eventType, ServiceID: current.ServiceID, OccurredAt: current.CheckedAt, StatusCode: current.StatusCode, ResponseTimeMS: current.ResponseTimeMS, Error: current.Error}
 }

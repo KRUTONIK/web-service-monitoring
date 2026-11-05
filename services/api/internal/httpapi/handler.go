@@ -38,8 +38,8 @@ type serviceRepository interface {
 	ListByOwner(context.Context, string) ([]serviceconfig.Service, error)
 	ListPageByOwner(context.Context, string, int, int) ([]serviceconfig.Service, int, error)
 	ByIDAndOwner(context.Context, string, string) (serviceconfig.Service, error)
-	Create(context.Context, string, string, string, bool, int, int) (serviceconfig.Service, error)
-	Update(context.Context, string, string, string, string, bool, int, int) (serviceconfig.Service, error)
+	Create(context.Context, string, string, string, bool, bool, int, int) (serviceconfig.Service, error)
+	Update(context.Context, string, string, string, string, bool, bool, int, int) (serviceconfig.Service, error)
 	Delete(context.Context, string, string) (serviceconfig.Service, error)
 }
 
@@ -460,11 +460,23 @@ type currentUser struct {
 }
 
 type serviceInput struct {
-	Name            string `json:"name"`
-	URL             string `json:"url"`
-	Enabled         bool   `json:"enabled"`
-	IntervalSeconds *int   `json:"interval_seconds"`
-	TimeoutSeconds  *int   `json:"timeout_seconds"`
+	Name                 string `json:"name"`
+	URL                  string `json:"url"`
+	Enabled              bool   `json:"enabled"`
+	NotificationsEnabled *bool  `json:"notifications_enabled"`
+	IntervalSeconds      *int   `json:"interval_seconds"`
+	TimeoutSeconds       *int   `json:"timeout_seconds"`
+}
+
+func (input serviceInput) notificationsEnabled() bool {
+	return input.NotificationsEnabled != nil && *input.NotificationsEnabled
+}
+
+func (input serviceInput) notificationsEnabledOr(fallback bool) bool {
+	if input.NotificationsEnabled == nil {
+		return fallback
+	}
+	return *input.NotificationsEnabled
 }
 
 type statusResponse struct {
@@ -599,7 +611,7 @@ func (handler *handler) createService(writer http.ResponseWriter, request *http.
 	if !ok {
 		return
 	}
-	service, err := handler.services.Create(request.Context(), currentUser.ID, input.Name, input.URL, input.Enabled, input.intervalSeconds(), input.timeoutSeconds())
+	service, err := handler.services.Create(request.Context(), currentUser.ID, input.Name, input.URL, input.Enabled, input.notificationsEnabled(), input.intervalSeconds(), input.timeoutSeconds())
 	if err != nil {
 		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось создать сервис"})
 		return
@@ -618,7 +630,16 @@ func (handler *handler) updateService(writer http.ResponseWriter, request *http.
 	if !ok {
 		return
 	}
-	service, err := handler.services.Update(request.Context(), currentUser.ID, request.PathValue("id"), input.Name, input.URL, input.Enabled, input.intervalSeconds(), input.timeoutSeconds())
+	current, err := handler.services.ByIDAndOwner(request.Context(), currentUser.ID, request.PathValue("id"))
+	if errors.Is(err, serviceconfig.ErrNotFound) {
+		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "Сервис не найден"})
+		return
+	}
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось получить сервис"})
+		return
+	}
+	service, err := handler.services.Update(request.Context(), currentUser.ID, request.PathValue("id"), input.Name, input.URL, input.Enabled, input.notificationsEnabledOr(current.NotificationsEnabled), input.intervalSeconds(), input.timeoutSeconds())
 	if errors.Is(err, serviceconfig.ErrNotFound) {
 		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "Сервис не найден"})
 		return
