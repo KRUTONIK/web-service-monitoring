@@ -138,13 +138,14 @@ test('пагинирует историю отдельно от графика �
   expect(requests.some((request) => request.includes('limit=10000') && request.includes('chart=true'))).toBeTruthy()
 })
 
-test('обновляет все данные текущего экрана', async ({ page }) => {
-  const requests = { services: 0, status: 0, incidents: 0, checks: 0 }
+test('обновляет оперативные данные текущего экрана автоматически', async ({ page }) => {
+  await page.clock.install()
+  const requests = { status: 0, incidents: 0, checks: 0 }
   await mockDashboard(page, { statusHandler: (route) => { requests.status += 1; return route.fulfill({ contentType: 'application/json', body: JSON.stringify(serviceStatus()) }) }, checksHandler: (route) => { requests.checks += 1; const url = new URL(route.request().url()); return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ checks: [checkResult()], limit: Number(url.searchParams.get('limit')), offset: 0 }) }) } })
-  await page.route('**/api/services', (route) => { requests.services += 1; return route.fulfill({ contentType: 'application/json', body: JSON.stringify([service]) }) })
   await page.route('**/api/services/*/incidents', (route) => { requests.incidents += 1; return route.fulfill({ contentType: 'application/json', body: '[]' }) })
   await page.goto('/')
-  await page.getByRole('button', { name: 'Обновить' }).click()
+  await expect.poll(() => Object.values(requests).every((count) => count >= 1)).toBeTruthy()
+  await page.clock.fastForward(10_000)
   await expect.poll(() => Object.values(requests).every((count) => count >= 2)).toBeTruthy()
 })
 
@@ -199,21 +200,6 @@ test('показывает недоступность сервиса и дета
   await expect(page.getByText('503')).toBeVisible()
   await expect(statusResponseTime(page, '215 мс')).toBeVisible()
   await expect(page.getByText('Сервис временно недоступен')).toBeVisible()
-})
-
-test('обновляет состояние вручную без перезагрузки страницы', async ({ page }) => {
-  let requests = 0
-  await mockDashboard(page, {
-    statusHandler: (route) => {
-      requests += 1
-      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(serviceStatus({ last_check: checkResult({ response_time_ms: requests === 1 ? 42 : 87 }) })) })
-    },
-  })
-  await page.goto('/')
-  await expect(statusResponseTime(page, '42 мс')).toBeVisible()
-  await page.getByRole('button', { name: 'Обновить' }).click()
-  await expect(statusResponseTime(page, '87 мс')).toBeVisible()
-  expect(requests).toBe(2)
 })
 
 test('показывает ошибку Metrics API', async ({ page }) => {
