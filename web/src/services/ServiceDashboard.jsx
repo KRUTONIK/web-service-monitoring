@@ -47,6 +47,7 @@ export function ServiceDashboard({ serviceID, onNavigate }) {
       await invalidate()
       setSelectedID(service.id)
       setCreating(false)
+      onNavigate?.(`/${service.id}`)
     },
   })
   const updateMutation = useMutation({
@@ -62,7 +63,10 @@ export function ServiceDashboard({ serviceID, onNavigate }) {
     mutationFn: (id) => apiRequest(`/api/services/${id}`, { method: 'DELETE' }),
     onSuccess: async (_, id) => {
       await invalidate()
-      if (selectedID === id) setSelectedID(null)
+      if (selectedID === id || serviceID === id) {
+        setSelectedID(null)
+        onNavigate?.('/')
+      }
     },
   })
 

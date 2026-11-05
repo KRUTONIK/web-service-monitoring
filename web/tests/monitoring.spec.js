@@ -88,6 +88,11 @@ async function mockDashboard(page, { services = [service], status = serviceStatu
   })
 }
 
+async function openService(page, name = service.name) {
+  await page.getByRole('row', { name: new RegExp(name) }).click()
+  await expect(page).toHaveURL(new RegExp(`/${name === service.name ? service.id : ''}$`))
+}
+
 test('показывает форму входа неавторизованному пользователю', async ({ page }) => {
   await mockUnauthenticated(page)
   await page.goto('/')
@@ -111,8 +116,9 @@ test('регистрирует пользователя и открывает п
 test('показывает сервис и актуальное состояние', async ({ page }) => {
   await mockDashboard(page)
   await page.goto('/')
+	await openService(page)
 	await expect(page.getByRole('heading', { name: 'Основной сайт' })).toBeVisible()
-  await expect(page.getByRole('row', { name: /Основной сайт.*Доступен/ }).getByText('Доступен', { exact: true })).toBeVisible()
+  await expect(page.getByText('Доступен', { exact: true })).toBeVisible()
   await expect(statusResponseTime(page, '42 мс')).toBeVisible()
   await expect(statusCheckTime(page)).toBeVisible()
 })
@@ -121,6 +127,7 @@ test('показывает историю и запрашивает выбран
   const checks = [checkResult({ checked_at: '2026-11-01T10:30:00Z', response_time_ms: 42 }), checkResult({ checked_at: '2026-11-01T10:20:00Z', available: false, status_code: 503, error: 'Ошибка соединения' })]
   await mockDashboard(page, { checks })
   await page.goto('/')
+	await openService(page)
   await expect(page.getByRole('heading', { name: 'История проверок' })).toBeVisible()
   await expect(page.getByText('Ошибка соединения')).toBeVisible()
   const points = page.getByTestId('history-point')
@@ -146,6 +153,7 @@ test('пагинирует историю отдельно от графика �
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ checks, limit, offset }) })
   } })
   await page.goto('/')
+	await openService(page)
   await expect(page.getByRole('textbox', { name: 'Записей на странице' })).toHaveValue('5')
   await page.getByRole('button', { name: 'Вперёд' }).click()
   await expect.poll(() => requests.some((request) => request.includes('limit=6') && request.includes('offset=5'))).toBeTruthy()
@@ -161,6 +169,7 @@ test('обновляет оперативные данные текущего э
   await mockDashboard(page, { statusHandler: (route) => { requests.status += 1; return route.fulfill({ contentType: 'application/json', body: JSON.stringify(serviceStatus()) }) }, checksHandler: (route) => { requests.checks += 1; const url = new URL(route.request().url()); return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ checks: [checkResult()], limit: Number(url.searchParams.get('limit')), offset: 0 }) }) } })
   await page.route('**/api/services/*/incidents?**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], limit: 20, offset: 0, total: 0 }) }))
   await page.goto('/')
+  await openService(page)
   await expect.poll(() => Object.values(requests).every((count) => count >= 1)).toBeTruthy()
   await page.clock.fastForward(10_000)
   await expect.poll(() => Object.values(requests).every((count) => count >= 2)).toBeTruthy()
@@ -169,6 +178,7 @@ test('обновляет оперативные данные текущего э
 test('сообщает об отсутствии результатов проверки', async ({ page }) => {
   await mockDashboard(page, { status: serviceStatus({ state: 'unknown', current: false, last_check: undefined }) })
   await page.goto('/')
+  await openService(page)
   await expect(page.getByText('Проверок для сервиса пока нет.')).toBeVisible()
 })
 
@@ -202,10 +212,13 @@ test('показывает загрузку состояния и затем р�
   })
 
   const navigation = page.goto('/', { waitUntil: 'domcontentloaded' })
+  await navigation
+  const detailNavigation = page.waitForURL(`**/${service.id}`)
+  await page.getByRole('row', { name: /Основной сайт/ }).click()
+  await detailNavigation
   await expect(page.getByRole('status', { name: 'Загрузка последней проверки' })).toBeVisible()
   releaseStatus()
-  await navigation
-  await expect(page.getByRole('row', { name: /Основной сайт.*Доступен/ }).getByText('Доступен', { exact: true })).toBeVisible()
+  await expect(page.getByText('Доступен', { exact: true })).toBeVisible()
 })
 
 test('показывает недоступность сервиса и детали ошибки', async ({ page }) => {
@@ -213,6 +226,7 @@ test('показывает недоступность сервиса и дета
     status: serviceStatus({ state: 'unavailable', last_check: checkResult({ available: false, status_code: 503, response_time_ms: 215, error: 'Сервис временно недоступен' }) }),
   })
   await page.goto('/')
+  await openService(page)
   await expect(page.getByText('Недоступен', { exact: true })).toBeVisible()
   await expect(page.getByText('503')).toBeVisible()
   await expect(statusResponseTime(page, '215 мс')).toBeVisible()
@@ -222,6 +236,7 @@ test('показывает недоступность сервиса и дета
 test('показывает ошибку Metrics API', async ({ page }) => {
   await mockDashboard(page, { statusCode: 502, status: { error: 'Не удалось получить данные метрик' } })
   await page.goto('/')
+  await openService(page)
   await expect(page.getByText('Не удалось получить данные метрик')).toBeVisible()
 })
 
@@ -231,6 +246,7 @@ test('показывает открытый и завершённый инцид
     { id: 'incident-closed', service_id: service.id, started_at: '2026-11-01T08:00:00Z', ended_at: '2026-11-01T08:01:30Z' },
   ] })
   await page.goto('/')
+	await openService(page)
   await expect(page.getByText('Текущий сбой')).toBeVisible()
   await expect(page.getByText('Завершённый сбой')).toBeVisible()
   await expect(page.getByText('90 с')).toBeVisible()
@@ -239,6 +255,7 @@ test('показывает открытый и завершённый инцид
 test('показывает устаревший результат как неактуальные данные', async ({ page }) => {
   await mockDashboard(page, { status: serviceStatus({ state: 'unknown', current: false }) })
   await page.goto('/')
+  await openService(page)
   await expect(page.getByText('Нет актуальных данных')).toBeVisible()
   await expect(page.getByText('Показан последний известный результат.')).toBeVisible()
   await expect(statusResponseTime(page, '42 мс')).toBeVisible()
@@ -247,6 +264,7 @@ test('показывает устаревший результат как неа
 test('показывает отключённый мониторинг', async ({ page }) => {
   await mockDashboard(page, { status: serviceStatus({ state: 'paused', current: false, last_check: undefined }) })
   await page.goto('/')
+  await openService(page)
   await expect(page.getByText('Мониторинг отключён')).toBeVisible()
 })
 
@@ -260,6 +278,7 @@ test('обновляет состояние автоматически чере�
     },
   })
   await page.goto('/')
+  await openService(page)
   await expect(statusResponseTime(page, '42 мс')).toBeVisible()
   await page.clock.fastForward(10_000)
   await expect(statusResponseTime(page, '64 мс')).toBeVisible()
@@ -276,8 +295,8 @@ test('при переключении сервиса показывает тол
     },
   })
   await page.goto('/')
-  await expect(statusResponseTime(page, '42 мс')).toBeVisible()
   await page.getByRole('row', { name: /Второй сайт.*https:\/\/second\.example/ }).click()
+  await expect(page).toHaveURL(/\/service-2$/)
   await expect(statusResponseTime(page, '99 мс')).toBeVisible()
   await expect(page.getByText('Недоступен', { exact: true })).toBeVisible()
 })
@@ -289,14 +308,13 @@ test('сохраняет выбранный сервис при пагинаци
   await page.goto('/')
   await page.getByRole('row', { name: /Выбранный сайт.*https:\/\/service\.example/ }).click()
   await expect(page.getByRole('heading', { name: 'Выбранный сайт' })).toBeVisible()
+  await page.goBack()
+  await expect(page).toHaveURL(/\/$/)
   await page.getByRole('button', { name: 'Следующая страница сервисов' }).click()
-  await expect(page.getByRole('heading', { name: 'Выбранный сайт' })).toBeVisible()
   await page.getByLabel('Поиск').fill('Сервис 11')
   await expect(page.getByRole('row', { name: /Сервис 11/ })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Выбранный сайт' })).toBeVisible()
   await page.getByRole('textbox', { name: 'Состояние' }).click()
   await page.getByRole('option', { name: 'Доступные', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Выбранный сайт' })).toBeVisible()
   await page.getByRole('row', { name: /Сервис 11.*https:\/\/service-11\.example/ }).click()
   await expect(page.getByRole('heading', { name: 'Сервис 11' })).toBeVisible()
 })
@@ -326,6 +344,7 @@ test('изменяет сервис', async ({ page }) => {
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify(updated) })
   })
   await page.goto('/')
+  await openService(page)
   await page.getByRole('button', { name: 'Изменить' }).click()
   await page.getByLabel('Название').fill(updated.name)
   await page.getByLabel('URL').fill(updated.url)
@@ -346,6 +365,7 @@ test('удаляет сервис из списка', async ({ page }) => {
     return route.fulfill({ status: 204 })
   })
   await page.goto('/')
+  await openService(page)
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Удалить' }).click()
   await expect(page.getByText('Сервисов пока нет. Добавьте первый сервис для мониторинга.')).toBeVisible()
