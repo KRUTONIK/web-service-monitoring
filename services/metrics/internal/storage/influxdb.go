@@ -157,7 +157,8 @@ func (influx *InfluxDB) scalar(ctx context.Context, query string) (float64, erro
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("InfluxDB returned %s", response.Status)
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 1024))
+		return 0, fmt.Errorf("InfluxDB returned %s: %s", response.Status, strings.TrimSpace(string(body)))
 	}
 	content, err := io.ReadAll(response.Body)
 	if err != nil {

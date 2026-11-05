@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	metricsv1 "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/metrics/v1"
@@ -25,6 +26,7 @@ func (server *Server) GetCheckSummary(ctx context.Context, request *metricsv1.Ge
 	}
 	summary, err := server.reader.Summary(ctx, request.GetServiceId(), request.GetFrom().AsTime())
 	if err != nil {
+		log.Printf("get check summary service_id=%s: %v", request.GetServiceId(), err)
 		return nil, status.Error(codes.Internal, "failed to read monitoring data")
 	}
 	return &metricsv1.GetCheckSummaryResponse{TotalChecks: summary.TotalChecks, SuccessfulChecks: summary.SuccessfulChecks, HasResponseMetrics: summary.HasResponseMetrics, AverageResponseMs: summary.AverageResponseMS, P95ResponseMs: summary.P95ResponseMS}, nil

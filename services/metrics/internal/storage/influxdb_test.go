@@ -116,3 +116,16 @@ func TestSummaryParsesAggregateResponses(t *testing.T) {
 		t.Fatalf("unexpected summary=%+v err=%v requests=%d", summary, err, requestCount)
 	}
 }
+
+func TestScalarIncludesLimitedInfluxDBErrorBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(writer, "Flux parsing failed: "+strings.Repeat("x", 1024)+"not-in-error")
+	}))
+	defer server.Close()
+
+	_, err := NewInfluxDB(server.Client(), server.URL, "org", "bucket", "token").scalar(context.Background(), "invalid flux")
+	if err == nil || !strings.Contains(err.Error(), "400 Bad Request") || !strings.Contains(err.Error(), "Flux parsing failed") || strings.Contains(err.Error(), "not-in-error") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
