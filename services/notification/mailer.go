@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net"
 	"net/mail"
@@ -37,7 +38,10 @@ func Send(cfg SMTPConfig, event notifications.Event) (result error) {
 		return fmt.Errorf("set SMTP deadline: %w", err)
 	}
 	defer func() {
-		if err := connection.Close(); result == nil && err != nil {
+		// smtp.Client.Quit closes the underlying connection. Closing it again is
+		// expected to report net.ErrClosed and must not turn a delivered email
+		// into a retry.
+		if err := connection.Close(); result == nil && err != nil && !errors.Is(err, net.ErrClosed) {
 			result = fmt.Errorf("close SMTP connection: %w", err)
 		}
 	}()
