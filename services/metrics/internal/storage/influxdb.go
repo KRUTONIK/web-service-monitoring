@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/csv"
@@ -277,55 +278,77 @@ func parseLatestResult(reader io.Reader) (metric.Result, error) {
 }
 
 func parseResults(reader io.Reader) ([]metric.Result, error) {
-	content, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, err
-	}
-	lines := strings.Split(string(content), "\n")
-	dataLines := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if line != "" && !strings.HasPrefix(line, "#") {
-			dataLines = append(dataLines, line)
+	scanner := bufio.NewScanner(reader)
+	// Flux produces one annotated CSV table per group.  Each table repeats its
+	// header, so retain the current header while walking the response line by line.
+	var header []string
+	results := []metric.Result{}
+	for scanner.Scan() {
+		line := strings.TrimSuffix(scanner.Text(), "\r")
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
 		}
-	}
-	if len(dataLines) < 2 {
-		return []metric.Result{}, nil
-	}
-
-	records, err := csv.NewReader(strings.NewReader(strings.Join(dataLines, "\n"))).ReadAll()
-	if err != nil {
-		return nil, err
-	}
-	if len(records) < 2 {
-		return []metric.Result{}, nil
-	}
-	results := make([]metric.Result, 0, len(records)-1)
-	for _, record := range records[1:] {
-		values := make(map[string]string, len(records[0]))
-		for index, column := range records[0] {
+		record, err := csv.NewReader(strings.NewReader(line)).Read()
+		if err != nil {
+			return nil, fmt.Errorf("parse InfluxDB CSV row: %w", err)
+		}
+		if containsColumn(record, "_time") {
+			header = record
+			continue
+		}
+		if header == nil {
+			return nil, errors.New("InfluxDB CSV data row without header")
+		}
+		values := make(map[string]string, len(header))
+		for index, column := range header {
 			if index < len(record) {
 				values[column] = record[index]
 			}
 		}
-		checkedAt, err := time.Parse(time.RFC3339Nano, values["_time"])
+		result, err := resultFromValues(values)
 		if err != nil {
-			return nil, fmt.Errorf("parse check time: %w", err)
+			return nil, err
 		}
-		available, err := strconv.ParseBool(values["available"])
-		if err != nil {
-			return nil, fmt.Errorf("parse availability: %w", err)
-		}
-		statusCode, err := strconv.Atoi(values["status_code"])
-		if err != nil {
-			return nil, fmt.Errorf("parse status code: %w", err)
-		}
-		responseTime, err := strconv.ParseInt(values["response_time_ms"], 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("parse response time: %w", err)
-		}
-		results = append(results, metric.Result{ServiceID: values["service_id"], ServiceURL: values["service_url"], CheckedAt: checkedAt, Available: available, StatusCode: statusCode, ResponseTimeMS: responseTime, Error: values["error"]})
+		results = append(results, result)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
 	}
 	return results, nil
+}
+
+func containsColumn(columns []string, wanted string) bool {
+	for _, column := range columns {
+		if column == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func resultFromValues(values map[string]string) (metric.Result, error) {
+	for _, field := range []string{"_time", "service_id", "service_url", "available", "status_code", "response_time_ms"} {
+		if _, ok := values[field]; !ok {
+			return metric.Result{}, fmt.Errorf("InfluxDB CSV missing %s column", field)
+		}
+	}
+	checkedAt, err := time.Parse(time.RFC3339Nano, values["_time"])
+	if err != nil {
+		return metric.Result{}, fmt.Errorf("parse check time: %w", err)
+	}
+	available, err := strconv.ParseBool(values["available"])
+	if err != nil {
+		return metric.Result{}, fmt.Errorf("parse availability: %w", err)
+	}
+	statusCode, err := strconv.Atoi(values["status_code"])
+	if err != nil {
+		return metric.Result{}, fmt.Errorf("parse status code: %w", err)
+	}
+	responseTime, err := strconv.ParseInt(values["response_time_ms"], 10, 64)
+	if err != nil {
+		return metric.Result{}, fmt.Errorf("parse response time: %w", err)
+	}
+	return metric.Result{ServiceID: values["service_id"], ServiceURL: values["service_url"], CheckedAt: checkedAt, Available: available, StatusCode: statusCode, ResponseTimeMS: responseTime, Error: values["error"]}, nil
 }
 
 func escapeFluxString(value string) string {
