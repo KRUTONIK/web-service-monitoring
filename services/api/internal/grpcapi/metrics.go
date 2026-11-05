@@ -48,6 +48,20 @@ func (client *MetricsClient) Latest(ctx context.Context, serviceID string) (moni
 	}, nil
 }
 
+func (client *MetricsClient) LatestMany(ctx context.Context, serviceIDs []string) ([]monitoring.Result, error) {
+	requestContext, cancel := context.WithTimeout(ctx, client.timeout)
+	defer cancel()
+	response, err := client.client.GetLatestChecks(requestContext, &metricsv1.GetLatestChecksRequest{ServiceIds: serviceIDs})
+	if err != nil {
+		return nil, fmt.Errorf("request latest checks: %w", err)
+	}
+	results := make([]monitoring.Result, 0, len(response.Checks))
+	for _, check := range response.Checks {
+		results = append(results, monitoring.Result{ServiceID: check.ServiceId, ServiceURL: check.ServiceUrl, CheckedAt: check.CheckedAt.AsTime(), Available: check.Available, StatusCode: int(check.StatusCode), ResponseTimeMS: check.ResponseTimeMs, Error: check.Error})
+	}
+	return results, nil
+}
+
 func (client *MetricsClient) History(ctx context.Context, serviceID string, from time.Time, limit, offset int, aggregateWindow time.Duration) (monitoring.History, error) {
 	requestContext, cancel := context.WithTimeout(ctx, client.timeout)
 	defer cancel()

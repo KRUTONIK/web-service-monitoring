@@ -66,6 +66,94 @@ func (x *GetLatestCheckRequest) GetServiceId() string {
 	return ""
 }
 
+type GetLatestChecksRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServiceIds    []string               `protobuf:"bytes,1,rep,name=service_ids,json=serviceIds,proto3" json:"service_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetLatestChecksRequest) Reset() {
+	*x = GetLatestChecksRequest{}
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetLatestChecksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetLatestChecksRequest) ProtoMessage() {}
+
+func (x *GetLatestChecksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetLatestChecksRequest.ProtoReflect.Descriptor instead.
+func (*GetLatestChecksRequest) Descriptor() ([]byte, []int) {
+	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *GetLatestChecksRequest) GetServiceIds() []string {
+	if x != nil {
+		return x.ServiceIds
+	}
+	return nil
+}
+
+type GetLatestChecksResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Checks        []*CheckResult         `protobuf:"bytes,1,rep,name=checks,proto3" json:"checks,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetLatestChecksResponse) Reset() {
+	*x = GetLatestChecksResponse{}
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetLatestChecksResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetLatestChecksResponse) ProtoMessage() {}
+
+func (x *GetLatestChecksResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetLatestChecksResponse.ProtoReflect.Descriptor instead.
+func (*GetLatestChecksResponse) Descriptor() ([]byte, []int) {
+	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *GetLatestChecksResponse) GetChecks() []*CheckResult {
+	if x != nil {
+		return x.Checks
+	}
+	return nil
+}
+
 type GetLatestCheckResponse struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	ServiceUrl     string                 `protobuf:"bytes,1,opt,name=service_url,json=serviceUrl,proto3" json:"service_url,omitempty"`
@@ -81,7 +169,7 @@ type GetLatestCheckResponse struct {
 
 func (x *GetLatestCheckResponse) Reset() {
 	*x = GetLatestCheckResponse{}
-	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[1]
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -93,7 +181,7 @@ func (x *GetLatestCheckResponse) String() string {
 func (*GetLatestCheckResponse) ProtoMessage() {}
 
 func (x *GetLatestCheckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[1]
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -106,7 +194,7 @@ func (x *GetLatestCheckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLatestCheckResponse.ProtoReflect.Descriptor instead.
 func (*GetLatestCheckResponse) Descriptor() ([]byte, []int) {
-	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{1}
+	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *GetLatestCheckResponse) GetServiceUrl() string {
@@ -171,7 +259,7 @@ type GetCheckHistoryRequest struct {
 
 func (x *GetCheckHistoryRequest) Reset() {
 	*x = GetCheckHistoryRequest{}
-	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[2]
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -183,7 +271,7 @@ func (x *GetCheckHistoryRequest) String() string {
 func (*GetCheckHistoryRequest) ProtoMessage() {}
 
 func (x *GetCheckHistoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[2]
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -196,7 +284,7 @@ func (x *GetCheckHistoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCheckHistoryRequest.ProtoReflect.Descriptor instead.
 func (*GetCheckHistoryRequest) Descriptor() ([]byte, []int) {
-	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{2}
+	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GetCheckHistoryRequest) GetServiceId() string {
@@ -249,7 +337,7 @@ type CheckResult struct {
 
 func (x *CheckResult) Reset() {
 	*x = CheckResult{}
-	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[3]
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -261,7 +349,7 @@ func (x *CheckResult) String() string {
 func (*CheckResult) ProtoMessage() {}
 
 func (x *CheckResult) ProtoReflect() protoreflect.Message {
-	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[3]
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -274,7 +362,7 @@ func (x *CheckResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckResult.ProtoReflect.Descriptor instead.
 func (*CheckResult) Descriptor() ([]byte, []int) {
-	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{3}
+	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CheckResult) GetServiceUrl() string {
@@ -335,7 +423,7 @@ type GetCheckHistoryResponse struct {
 
 func (x *GetCheckHistoryResponse) Reset() {
 	*x = GetCheckHistoryResponse{}
-	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[4]
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -347,7 +435,7 @@ func (x *GetCheckHistoryResponse) String() string {
 func (*GetCheckHistoryResponse) ProtoMessage() {}
 
 func (x *GetCheckHistoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[4]
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -360,7 +448,7 @@ func (x *GetCheckHistoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCheckHistoryResponse.ProtoReflect.Descriptor instead.
 func (*GetCheckHistoryResponse) Descriptor() ([]byte, []int) {
-	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{4}
+	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *GetCheckHistoryResponse) GetChecks() []*CheckResult {
@@ -380,7 +468,7 @@ type GetCheckSummaryRequest struct {
 
 func (x *GetCheckSummaryRequest) Reset() {
 	*x = GetCheckSummaryRequest{}
-	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[5]
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -392,7 +480,7 @@ func (x *GetCheckSummaryRequest) String() string {
 func (*GetCheckSummaryRequest) ProtoMessage() {}
 
 func (x *GetCheckSummaryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[5]
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -405,7 +493,7 @@ func (x *GetCheckSummaryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCheckSummaryRequest.ProtoReflect.Descriptor instead.
 func (*GetCheckSummaryRequest) Descriptor() ([]byte, []int) {
-	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{5}
+	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetCheckSummaryRequest) GetServiceId() string {
@@ -435,7 +523,7 @@ type GetCheckSummaryResponse struct {
 
 func (x *GetCheckSummaryResponse) Reset() {
 	*x = GetCheckSummaryResponse{}
-	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[6]
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -447,7 +535,7 @@ func (x *GetCheckSummaryResponse) String() string {
 func (*GetCheckSummaryResponse) ProtoMessage() {}
 
 func (x *GetCheckSummaryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[6]
+	mi := &file_monitoring_metrics_v1_metrics_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -460,7 +548,7 @@ func (x *GetCheckSummaryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCheckSummaryResponse.ProtoReflect.Descriptor instead.
 func (*GetCheckSummaryResponse) Descriptor() ([]byte, []int) {
-	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{6}
+	return file_monitoring_metrics_v1_metrics_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetCheckSummaryResponse) GetTotalChecks() int64 {
@@ -505,7 +593,12 @@ const file_monitoring_metrics_v1_metrics_proto_rawDesc = "" +
 	"#monitoring/metrics/v1/metrics.proto\x12\x15monitoring.metrics.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"6\n" +
 	"\x15GetLatestCheckRequest\x12\x1d\n" +
 	"\n" +
-	"service_id\x18\x01 \x01(\tR\tserviceId\"\x92\x02\n" +
+	"service_id\x18\x01 \x01(\tR\tserviceId\"9\n" +
+	"\x16GetLatestChecksRequest\x12\x1f\n" +
+	"\vservice_ids\x18\x01 \x03(\tR\n" +
+	"serviceIds\"U\n" +
+	"\x17GetLatestChecksResponse\x12:\n" +
+	"\x06checks\x18\x01 \x03(\v2\".monitoring.metrics.v1.CheckResultR\x06checks\"\x92\x02\n" +
 	"\x16GetLatestCheckResponse\x12\x1f\n" +
 	"\vservice_url\x18\x01 \x01(\tR\n" +
 	"serviceUrl\x129\n" +
@@ -548,9 +641,10 @@ const file_monitoring_metrics_v1_metrics_proto_rawDesc = "" +
 	"\x11successful_checks\x18\x02 \x01(\x03R\x10successfulChecks\x120\n" +
 	"\x14has_response_metrics\x18\x03 \x01(\bR\x12hasResponseMetrics\x12.\n" +
 	"\x13average_response_ms\x18\x04 \x01(\x01R\x11averageResponseMs\x12&\n" +
-	"\x0fp95_response_ms\x18\x05 \x01(\x03R\rp95ResponseMs2\xe3\x02\n" +
+	"\x0fp95_response_ms\x18\x05 \x01(\x03R\rp95ResponseMs2\xd5\x03\n" +
 	"\x0eMetricsService\x12m\n" +
 	"\x0eGetLatestCheck\x12,.monitoring.metrics.v1.GetLatestCheckRequest\x1a-.monitoring.metrics.v1.GetLatestCheckResponse\x12p\n" +
+	"\x0fGetLatestChecks\x12-.monitoring.metrics.v1.GetLatestChecksRequest\x1a..monitoring.metrics.v1.GetLatestChecksResponse\x12p\n" +
 	"\x0fGetCheckHistory\x12-.monitoring.metrics.v1.GetCheckHistoryRequest\x1a..monitoring.metrics.v1.GetCheckHistoryResponse\x12p\n" +
 	"\x0fGetCheckSummary\x12-.monitoring.metrics.v1.GetCheckSummaryRequest\x1a..monitoring.metrics.v1.GetCheckSummaryResponseB]Z[github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/metrics/v1;metricsv1b\x06proto3"
 
@@ -566,34 +660,39 @@ func file_monitoring_metrics_v1_metrics_proto_rawDescGZIP() []byte {
 	return file_monitoring_metrics_v1_metrics_proto_rawDescData
 }
 
-var file_monitoring_metrics_v1_metrics_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_monitoring_metrics_v1_metrics_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_monitoring_metrics_v1_metrics_proto_goTypes = []any{
 	(*GetLatestCheckRequest)(nil),   // 0: monitoring.metrics.v1.GetLatestCheckRequest
-	(*GetLatestCheckResponse)(nil),  // 1: monitoring.metrics.v1.GetLatestCheckResponse
-	(*GetCheckHistoryRequest)(nil),  // 2: monitoring.metrics.v1.GetCheckHistoryRequest
-	(*CheckResult)(nil),             // 3: monitoring.metrics.v1.CheckResult
-	(*GetCheckHistoryResponse)(nil), // 4: monitoring.metrics.v1.GetCheckHistoryResponse
-	(*GetCheckSummaryRequest)(nil),  // 5: monitoring.metrics.v1.GetCheckSummaryRequest
-	(*GetCheckSummaryResponse)(nil), // 6: monitoring.metrics.v1.GetCheckSummaryResponse
-	(*timestamppb.Timestamp)(nil),   // 7: google.protobuf.Timestamp
+	(*GetLatestChecksRequest)(nil),  // 1: monitoring.metrics.v1.GetLatestChecksRequest
+	(*GetLatestChecksResponse)(nil), // 2: monitoring.metrics.v1.GetLatestChecksResponse
+	(*GetLatestCheckResponse)(nil),  // 3: monitoring.metrics.v1.GetLatestCheckResponse
+	(*GetCheckHistoryRequest)(nil),  // 4: monitoring.metrics.v1.GetCheckHistoryRequest
+	(*CheckResult)(nil),             // 5: monitoring.metrics.v1.CheckResult
+	(*GetCheckHistoryResponse)(nil), // 6: monitoring.metrics.v1.GetCheckHistoryResponse
+	(*GetCheckSummaryRequest)(nil),  // 7: monitoring.metrics.v1.GetCheckSummaryRequest
+	(*GetCheckSummaryResponse)(nil), // 8: monitoring.metrics.v1.GetCheckSummaryResponse
+	(*timestamppb.Timestamp)(nil),   // 9: google.protobuf.Timestamp
 }
 var file_monitoring_metrics_v1_metrics_proto_depIdxs = []int32{
-	7, // 0: monitoring.metrics.v1.GetLatestCheckResponse.checked_at:type_name -> google.protobuf.Timestamp
-	7, // 1: monitoring.metrics.v1.GetCheckHistoryRequest.from:type_name -> google.protobuf.Timestamp
-	7, // 2: monitoring.metrics.v1.CheckResult.checked_at:type_name -> google.protobuf.Timestamp
-	3, // 3: monitoring.metrics.v1.GetCheckHistoryResponse.checks:type_name -> monitoring.metrics.v1.CheckResult
-	7, // 4: monitoring.metrics.v1.GetCheckSummaryRequest.from:type_name -> google.protobuf.Timestamp
-	0, // 5: monitoring.metrics.v1.MetricsService.GetLatestCheck:input_type -> monitoring.metrics.v1.GetLatestCheckRequest
-	2, // 6: monitoring.metrics.v1.MetricsService.GetCheckHistory:input_type -> monitoring.metrics.v1.GetCheckHistoryRequest
-	5, // 7: monitoring.metrics.v1.MetricsService.GetCheckSummary:input_type -> monitoring.metrics.v1.GetCheckSummaryRequest
-	1, // 8: monitoring.metrics.v1.MetricsService.GetLatestCheck:output_type -> monitoring.metrics.v1.GetLatestCheckResponse
-	4, // 9: monitoring.metrics.v1.MetricsService.GetCheckHistory:output_type -> monitoring.metrics.v1.GetCheckHistoryResponse
-	6, // 10: monitoring.metrics.v1.MetricsService.GetCheckSummary:output_type -> monitoring.metrics.v1.GetCheckSummaryResponse
-	8, // [8:11] is the sub-list for method output_type
-	5, // [5:8] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	5,  // 0: monitoring.metrics.v1.GetLatestChecksResponse.checks:type_name -> monitoring.metrics.v1.CheckResult
+	9,  // 1: monitoring.metrics.v1.GetLatestCheckResponse.checked_at:type_name -> google.protobuf.Timestamp
+	9,  // 2: monitoring.metrics.v1.GetCheckHistoryRequest.from:type_name -> google.protobuf.Timestamp
+	9,  // 3: monitoring.metrics.v1.CheckResult.checked_at:type_name -> google.protobuf.Timestamp
+	5,  // 4: monitoring.metrics.v1.GetCheckHistoryResponse.checks:type_name -> monitoring.metrics.v1.CheckResult
+	9,  // 5: monitoring.metrics.v1.GetCheckSummaryRequest.from:type_name -> google.protobuf.Timestamp
+	0,  // 6: monitoring.metrics.v1.MetricsService.GetLatestCheck:input_type -> monitoring.metrics.v1.GetLatestCheckRequest
+	1,  // 7: monitoring.metrics.v1.MetricsService.GetLatestChecks:input_type -> monitoring.metrics.v1.GetLatestChecksRequest
+	4,  // 8: monitoring.metrics.v1.MetricsService.GetCheckHistory:input_type -> monitoring.metrics.v1.GetCheckHistoryRequest
+	7,  // 9: monitoring.metrics.v1.MetricsService.GetCheckSummary:input_type -> monitoring.metrics.v1.GetCheckSummaryRequest
+	3,  // 10: monitoring.metrics.v1.MetricsService.GetLatestCheck:output_type -> monitoring.metrics.v1.GetLatestCheckResponse
+	2,  // 11: monitoring.metrics.v1.MetricsService.GetLatestChecks:output_type -> monitoring.metrics.v1.GetLatestChecksResponse
+	6,  // 12: monitoring.metrics.v1.MetricsService.GetCheckHistory:output_type -> monitoring.metrics.v1.GetCheckHistoryResponse
+	8,  // 13: monitoring.metrics.v1.MetricsService.GetCheckSummary:output_type -> monitoring.metrics.v1.GetCheckSummaryResponse
+	10, // [10:14] is the sub-list for method output_type
+	6,  // [6:10] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_monitoring_metrics_v1_metrics_proto_init() }
@@ -607,7 +706,7 @@ func file_monitoring_metrics_v1_metrics_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_monitoring_metrics_v1_metrics_proto_rawDesc), len(file_monitoring_metrics_v1_metrics_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

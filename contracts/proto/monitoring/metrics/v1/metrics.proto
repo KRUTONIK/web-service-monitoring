@@ -8,6 +8,7 @@ option go_package = "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go
 
 service MetricsService {
   rpc GetLatestCheck(GetLatestCheckRequest) returns (GetLatestCheckResponse);
+  rpc GetLatestChecks(GetLatestChecksRequest) returns (GetLatestChecksResponse);
   rpc GetCheckHistory(GetCheckHistoryRequest) returns (GetCheckHistoryResponse);
   rpc GetCheckSummary(GetCheckSummaryRequest) returns (GetCheckSummaryResponse);
 }
@@ -15,6 +16,10 @@ service MetricsService {
 message GetLatestCheckRequest {
   string service_id = 1;
 }
+
+message GetLatestChecksRequest { repeated string service_ids = 1; }
+
+message GetLatestChecksResponse { repeated CheckResult checks = 1; }
 
 message GetLatestCheckResponse {
   string service_url = 1;

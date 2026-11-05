@@ -29,6 +29,13 @@ func (stub *stubReader) Latest(_ context.Context, serviceID string) (metric.Resu
 	return stub.result, stub.err
 }
 
+func (stub *stubReader) LatestMany(_ context.Context, _ []string) ([]metric.Result, error) {
+	if stub.result.ServiceID == "" {
+		return nil, stub.err
+	}
+	return []metric.Result{stub.result}, stub.err
+}
+
 func (stub *stubReader) History(_ context.Context, serviceID string, from time.Time, limit, offset int, aggregate time.Duration) ([]metric.Result, error) {
 	stub.requestedService, stub.from, stub.limit, stub.offset, stub.aggregate = serviceID, from, limit, offset, aggregate
 	return stub.history, stub.err

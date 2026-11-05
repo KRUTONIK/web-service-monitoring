@@ -22,6 +22,7 @@ const testOrigin = "http://localhost:5173"
 
 type stubCheckReader struct {
 	result           monitoring.Result
+	results          []monitoring.Result
 	history          monitoring.History
 	summary          monitoring.Summary
 	err              error
@@ -38,6 +39,67 @@ type historyCall struct {
 func (stub *stubCheckReader) Latest(_ context.Context, serviceID string) (monitoring.Result, error) {
 	stub.requestedService = serviceID
 	return stub.result, stub.err
+}
+
+func (stub *stubCheckReader) LatestMany(_ context.Context, _ []string) ([]monitoring.Result, error) {
+	if stub.results != nil {
+		return stub.results, stub.err
+	}
+	if stub.result.ServiceID == "" {
+		return nil, stub.err
+	}
+	return []monitoring.Result{stub.result}, stub.err
+}
+
+func TestMonitoringOverviewFiltersAndPaginatesOnServer(t *testing.T) {
+	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+	reader := &stubCheckReader{results: []monitoring.Result{{ServiceID: "down", Available: false, StatusCode: 503, CheckedAt: time.Now().UTC()}}}
+	handler, sessions, services, _ := newTestHandler(reader, authentication)
+	services.services = []serviceconfig.Service{{ID: "available", Name: "API", URL: "https://api.test", Enabled: true, IntervalSeconds: 10}, {ID: "down", Name: "Down", URL: "https://down.test", Enabled: true, IntervalSeconds: 10}, {ID: "paused", Name: "Paused", URL: "https://paused.test", Enabled: false, IntervalSeconds: 10}}
+	request := httptest.NewRequest(http.MethodGet, "/api/monitoring/overview?status=unavailable&search=down&limit=10", nil)
+	request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"total":1`) || !strings.Contains(response.Body.String(), `"unavailable":1`) || !strings.Contains(response.Body.String(), `"unknown":1`) || !strings.Contains(response.Body.String(), `"paused":1`) {
+		t.Fatalf("unexpected response=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestMonitoringOverviewSortsBeforePagination(t *testing.T) {
+	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+	reader := &stubCheckReader{results: []monitoring.Result{
+		{ServiceID: "a", Available: true, CheckedAt: time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)},
+		{ServiceID: "b", Available: true, CheckedAt: time.Date(2026, 11, 5, 11, 0, 0, 0, time.UTC)},
+	}}
+	handler, sessions, services, _ := newTestHandler(reader, authentication)
+	services.services = []serviceconfig.Service{{ID: "a", Name: "Zulu", URL: "https://z.test", Enabled: true, IntervalSeconds: 10}, {ID: "b", Name: "Alpha", URL: "https://a.test", Enabled: true, IntervalSeconds: 10}}
+	request := httptest.NewRequest(http.MethodGet, "/api/monitoring/overview?sort=name&direction=asc&limit=10", nil)
+	request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || strings.Index(response.Body.String(), `"id":"b"`) > strings.Index(response.Body.String(), `"id":"a"`) {
+		t.Fatalf("expected alphabetical server order, response=%d body=%s", response.Code, response.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/api/monitoring/overview?sort=checked_at&direction=desc&limit=10", nil)
+	request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || strings.Index(response.Body.String(), `"id":"b"`) > strings.Index(response.Body.String(), `"id":"a"`) {
+		t.Fatalf("expected newest first server order, response=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestMonitoringOverviewRejectsInvalidSort(t *testing.T) {
+	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+	handler, sessions, _, _ := newTestHandler(&stubCheckReader{}, authentication)
+	request := httptest.NewRequest(http.MethodGet, "/api/monitoring/overview?sort=unsupported", nil)
+	request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected invalid sort to be rejected, got %d", response.Code)
+	}
 }
 
 func (stub *stubCheckReader) History(_ context.Context, serviceID string, _ time.Time, limit, offset int, aggregateWindow time.Duration) (monitoring.History, error) {
@@ -84,8 +146,27 @@ func (stub *stubServiceRepository) ListByOwner(_ context.Context, ownerID string
 	stub.ownerID = ownerID
 	return stub.services, stub.err
 }
+func (stub *stubServiceRepository) ListPageByOwner(_ context.Context, ownerID string, limit, offset int) ([]serviceconfig.Service, int, error) {
+	stub.ownerID = ownerID
+	end := offset + limit
+	if end > len(stub.services) {
+		end = len(stub.services)
+	}
+	if offset > len(stub.services) {
+		offset = len(stub.services)
+	}
+	return stub.services[offset:end], len(stub.services), stub.err
+}
 func (stub *stubServiceRepository) ByIDAndOwner(_ context.Context, ownerID, serviceID string) (serviceconfig.Service, error) {
 	stub.ownerID, stub.serviceID = ownerID, serviceID
+	for _, service := range stub.services {
+		if service.ID == serviceID {
+			return service, stub.err
+		}
+	}
+	if stub.service.ID == serviceID || stub.service.ID != "" {
+		return stub.service, stub.err
+	}
 	return stub.service, stub.err
 }
 func (stub *stubServiceRepository) Create(_ context.Context, ownerID, _, _ string, _ bool, _, _ int) (serviceconfig.Service, error) {
@@ -115,6 +196,17 @@ type stubIncidentRepository struct {
 func (stub *stubIncidentRepository) ListByService(_ context.Context, serviceID string) ([]incident.Incident, error) {
 	stub.serviceID = serviceID
 	return stub.values, stub.err
+}
+func (stub *stubIncidentRepository) ListPageByService(_ context.Context, serviceID string, limit, offset int) ([]incident.Incident, int, error) {
+	stub.serviceID = serviceID
+	end := offset + limit
+	if end > len(stub.values) {
+		end = len(stub.values)
+	}
+	if offset > len(stub.values) {
+		offset = len(stub.values)
+	}
+	return stub.values[offset:end], len(stub.values), stub.err
 }
 
 func (stub *stubConfigurationPublisher) Publish(_ context.Context, update serviceconfig.Update) error {

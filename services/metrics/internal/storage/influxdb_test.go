@@ -76,12 +76,62 @@ func TestLatestNotFound(t *testing.T) {
 	}
 }
 
-func TestHistoryQueryAggregatesAllJobsIntoTimeWindows(t *testing.T) {
+func TestLatestManyParsesSeparateInfluxCSVTables(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(writer, `#datatype,string,long,dateTime:RFC3339,string,string,boolean,long,long,string
+#group,false,false,false,true,true,false,false,false,false
+#default,_result,,,,,,,,
+,result,table,_time,service_id,service_url,available,status_code,response_time_ms,error
+,,0,2026-11-05T10:00:00Z,service-a,https://a.test,true,200,15,
+#datatype,string,long,dateTime:RFC3339,string,string,boolean,long,long,string
+#group,false,false,false,true,true,false,false,false,false
+#default,_result,,,,,,,,
+,result,table,_time,service_id,service_url,available,status_code,response_time_ms,error
+,,1,2026-11-05T10:01:00Z,service-b,https://b.test,false,503,25,unavailable
+`)
+	}))
+	defer server.Close()
+
+	results, err := NewInfluxDB(server.Client(), server.URL, "org", "bucket", "token").LatestMany(context.Background(), []string{"service-a", "service-b", "missing"})
+	if err != nil {
+		t.Fatalf("get latest results: %v", err)
+	}
+	if len(results) != 2 || results[0].ServiceID != "service-a" || results[0].ResponseTimeMS != 15 || results[1].ServiceID != "service-b" || results[1].StatusCode != 503 || results[1].Error != "unavailable" {
+		t.Fatalf("unexpected results: %+v", results)
+	}
+}
+
+func TestParseResultsAcceptsInfluxCRLFResponse(t *testing.T) {
+	results, err := parseResults(strings.NewReader(",result,table,_time,service_id,service_url,available,status_code,response_time_ms\r\n,,0,2026-11-05T10:00:00Z,service-a,https://a.test,true,200,15\r\n"))
+	if err != nil || len(results) != 1 || results[0].StatusCode != 200 || results[0].ResponseTimeMS != 15 {
+		t.Fatalf("unexpected results=%+v err=%v", results, err)
+	}
+}
+
+func TestParseResultsRejectsDataWithoutRequiredColumn(t *testing.T) {
+	_, err := parseResults(strings.NewReader(",result,table,_time,service_id,available,status_code,response_time_ms\n,,0,2026-11-05T10:00:00Z,service-a,true,200,15\n"))
+	if err == nil || !strings.Contains(err.Error(), "service_url") {
+		t.Fatalf("expected missing column error, got %v", err)
+	}
+}
+
+func TestHistoryQueryKeepsOneFailedCheckPerTimeWindow(t *testing.T) {
 	query := NewInfluxDB(nil, "", "", "bucket", "").historyQuery("service-1", time.Date(2026, 11, 5, 0, 0, 0, 0, time.UTC), 1000, 0, time.Hour)
-	group := `|> group(columns: ["service_id", "service_url", "_field"])`
-	aggregate := `|> aggregateWindow(every: 1h0m0s, fn: last, createEmpty: false)`
-	if !strings.Contains(query, group) || !strings.Contains(query, aggregate) || strings.Index(query, group) > strings.Index(query, aggregate) || strings.Contains(query, `rowKey: ["_time", "job_id"`) {
+	pivot := `|> pivot(rowKey: ["_time", "service_id", "service_url"], columnKey: ["_field"], valueColumn: "_value")`
+	window := `|> window(every: 1h0m0s)`
+	reduce := `|> reduce(`
+	if !strings.Contains(query, pivot) || !strings.Contains(query, window) || !strings.Contains(query, reduce) || strings.Index(query, pivot) > strings.Index(query, window) || strings.Index(query, window) > strings.Index(query, reduce) || strings.Contains(query, "aggregateWindow") || !strings.Contains(query, `accumulator.available and not r.available`) {
 		t.Fatalf("unexpected aggregate query: %s", query)
+	}
+}
+
+func TestHistoryParsesRepresentativeFailureWithZeroResponseTime(t *testing.T) {
+	results, err := parseResults(strings.NewReader(`,result,table,_time,service_id,service_url,available,status_code,response_time_ms,error
+,,0,2026-11-05T12:01:00Z,service-1,https://service.test,false,503,0,temporary failure
+,,1,2026-11-05T12:05:00Z,service-1,https://service.test,true,200,17,
+`))
+	if err != nil || len(results) != 2 || results[0].Available || results[0].ResponseTimeMS != 0 || results[0].StatusCode != 503 || results[0].Error != "temporary failure" || !results[1].Available {
+		t.Fatalf("unexpected representative results=%+v err=%v", results, err)
 	}
 }
 
