@@ -157,7 +157,7 @@ for (const scenario of [
 }
 
 test('распределяет десять проверок с интервалом 10 секунд по временной оси', async ({ page }) => {
-  const checks = Array.from({ length: 10 }, (_, index) => checkResult({ checked_at: `2026-11-01T12:00:${String(index * 10).padStart(2, '0')}Z`, response_time_ms: [0, 100, 500, 5000][index % 4], available: index % 2 === 0 }))
+  const checks = Array.from({ length: 10 }, (_, index) => checkResult({ checked_at: new Date(Date.UTC(2026, 10, 1, 12, 0, index * 10)).toISOString(), response_time_ms: [0, 100, 500, 5000][index % 4], available: index % 2 === 0 }))
   await mockDashboard(page, { checks })
   await page.goto('/')
   await openService(page)
