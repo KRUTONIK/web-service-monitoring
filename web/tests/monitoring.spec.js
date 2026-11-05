@@ -148,9 +148,9 @@ test('пагинирует историю отдельно от графика �
 
 test('обновляет оперативные данные текущего экрана автоматически', async ({ page }) => {
   await page.clock.install()
-  const requests = { status: 0, incidents: 0, checks: 0 }
+  const requests = { status: 0, checks: 0 }
   await mockDashboard(page, { statusHandler: (route) => { requests.status += 1; return route.fulfill({ contentType: 'application/json', body: JSON.stringify(serviceStatus()) }) }, checksHandler: (route) => { requests.checks += 1; const url = new URL(route.request().url()); return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ checks: [checkResult()], limit: Number(url.searchParams.get('limit')), offset: 0 }) }) } })
-  await page.route('**/api/services/*/incidents', (route) => { requests.incidents += 1; return route.fulfill({ contentType: 'application/json', body: '[]' }) })
+  await page.route('**/api/services/*/incidents?**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], limit: 20, offset: 0, total: 0 }) }))
   await page.goto('/')
   await expect.poll(() => Object.values(requests).every((count) => count >= 1)).toBeTruthy()
   await page.clock.fastForward(10_000)
