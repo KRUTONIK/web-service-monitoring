@@ -26,6 +26,13 @@ type stubCheckReader struct {
 	summary          monitoring.Summary
 	err              error
 	requestedService string
+	historyCalls     []historyCall
+}
+
+type historyCall struct {
+	limit           int
+	offset          int
+	aggregateWindow time.Duration
 }
 
 func (stub *stubCheckReader) Latest(_ context.Context, serviceID string) (monitoring.Result, error) {
@@ -33,9 +40,10 @@ func (stub *stubCheckReader) Latest(_ context.Context, serviceID string) (monito
 	return stub.result, stub.err
 }
 
-func (stub *stubCheckReader) History(_ context.Context, serviceID string, _ time.Time, limit, offset int, _ time.Duration) (monitoring.History, error) {
+func (stub *stubCheckReader) History(_ context.Context, serviceID string, _ time.Time, limit, offset int, aggregateWindow time.Duration) (monitoring.History, error) {
 	stub.requestedService = serviceID
 	stub.history.Limit, stub.history.Offset = limit, offset
+	stub.historyCalls = append(stub.historyCalls, historyCall{limit: limit, offset: offset, aggregateWindow: aggregateWindow})
 	return stub.history, stub.err
 }
 
@@ -182,6 +190,41 @@ func TestCheckHistory(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || reader.requestedService != "service-1" || reader.history.Limit != 20 || reader.history.Offset != 5 || !strings.Contains(response.Body.String(), `"checks"`) {
 		t.Fatalf("unexpected response=%d body=%s reader=%+v", response.Code, response.Body.String(), reader)
+	}
+}
+
+func TestCheckHistoryChartKeepsShortHistoryUnaggregated(t *testing.T) {
+	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+	reader := &stubCheckReader{history: monitoring.History{Checks: make([]monitoring.Result, 12)}}
+	handler, sessions, services, _ := newTestHandler(reader, authentication)
+	services.service = serviceconfig.Service{ID: "service-1"}
+	request := httptest.NewRequest(http.MethodGet, "/api/services/service-1/checks?period=30d&chart=true&limit=10000", nil)
+	request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || len(reader.historyCalls) != 1 {
+		t.Fatalf("unexpected response=%d calls=%+v", response.Code, reader.historyCalls)
+	}
+	call := reader.historyCalls[0]
+	if call.limit != 501 || call.offset != 0 || call.aggregateWindow != 0 {
+		t.Fatalf("short history must remain raw, got %+v", call)
+	}
+}
+
+func TestCheckHistoryChartAggregatesOnlyLongHistory(t *testing.T) {
+	authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+	reader := &stubCheckReader{history: monitoring.History{Checks: make([]monitoring.Result, 501)}}
+	handler, sessions, services, _ := newTestHandler(reader, authentication)
+	services.service = serviceconfig.Service{ID: "service-1"}
+	request := httptest.NewRequest(http.MethodGet, "/api/services/service-1/checks?period=7d&chart=true", nil)
+	request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || len(reader.historyCalls) != 2 {
+		t.Fatalf("unexpected response=%d calls=%+v", response.Code, reader.historyCalls)
+	}
+	if call := reader.historyCalls[1]; call.limit != 500 || call.offset != 0 || call.aggregateWindow != 30*time.Minute {
+		t.Fatalf("unexpected aggregate request: %+v", call)
 	}
 }
 

@@ -182,21 +182,43 @@ func (handler *handler) checkHistory(writer http.ResponseWriter, request *http.R
 		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Некорректная пагинация"})
 		return
 	}
-	aggregateWindow := time.Duration(0)
+	from := time.Now().UTC().Add(-duration)
 	if chart {
-		switch period {
-		case "7d":
-			aggregateWindow = 15 * time.Minute
-		case "30d":
-			aggregateWindow = time.Hour
+		history, err := handler.checks.History(request.Context(), service.ID, from, 501, 0, 0)
+		if err != nil {
+			writeJSON(writer, http.StatusBadGateway, map[string]string{"error": "Не удалось получить историю проверок"})
+			return
 		}
+		if len(history.Checks) <= 500 {
+			writeJSON(writer, http.StatusOK, history)
+			return
+		}
+		aggregateWindow := chartAggregateWindow(period)
+		history, err = handler.checks.History(request.Context(), service.ID, from, 500, 0, aggregateWindow)
+		if err != nil {
+			writeJSON(writer, http.StatusBadGateway, map[string]string{"error": "Не удалось получить историю проверок"})
+			return
+		}
+		writeJSON(writer, http.StatusOK, history)
+		return
 	}
-	history, err := handler.checks.History(request.Context(), service.ID, time.Now().UTC().Add(-duration), limit, offset, aggregateWindow)
+	history, err := handler.checks.History(request.Context(), service.ID, from, limit, offset, 0)
 	if err != nil {
 		writeJSON(writer, http.StatusBadGateway, map[string]string{"error": "Не удалось получить историю проверок"})
 		return
 	}
 	writeJSON(writer, http.StatusOK, history)
+}
+
+func chartAggregateWindow(period string) time.Duration {
+	switch period {
+	case "7d":
+		return 30 * time.Minute
+	case "30d":
+		return 2 * time.Hour
+	default:
+		return 5 * time.Minute
+	}
 }
 
 func historyPage(query url.Values, maxLimit int) (int, int, bool) {
