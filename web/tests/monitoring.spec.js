@@ -131,20 +131,20 @@ test('показывает историю и запрашивает выбран
   await expect(page.getByRole('heading', { name: 'История проверок' })).toBeVisible()
   await expect(page.getByText('Ошибка соединения')).toBeVisible()
   await expect(page.getByTestId('history-chart').locator('svg')).toBeVisible()
-  await expect(page.getByTestId('history-chart').locator('.recharts-dot')).toHaveCount(0)
+  await expect(page.getByTestId('history-chart').locator('.recharts-dot')).toHaveCount(2)
   await page.getByRole('textbox', { name: 'Период истории' }).click()
   await page.getByRole('option', { name: '7 дней', exact: true }).click()
   await expect(page.getByRole('textbox', { name: 'Период истории' })).toHaveValue('7 дней')
 })
 
 for (const scenario of [
-  ['успех, ошибка, успех', [checkResult({ checked_at: '2026-11-01T12:00:00Z', response_time_ms: 100 }), checkResult({ checked_at: '2026-11-01T12:00:10Z', available: false, status_code: 503, response_time_ms: 500 }), checkResult({ checked_at: '2026-11-01T12:00:20Z', response_time_ms: 110 })], 1],
-  ['успех, две ошибки, успех', [checkResult({ checked_at: '2026-11-01T12:00:00Z' }), checkResult({ checked_at: '2026-11-01T12:00:10Z', available: false, status_code: 503 }), checkResult({ checked_at: '2026-11-01T12:00:20Z', available: false, status_code: 504 }), checkResult({ checked_at: '2026-11-01T12:00:30Z' })], 2],
-  ['только успехи', [checkResult({ checked_at: '2026-11-01T12:00:00Z', response_time_ms: 0 }), checkResult({ checked_at: '2026-11-01T12:00:10Z' })], 0],
-  ['только ошибки', [checkResult({ checked_at: '2026-11-01T12:00:00Z', available: false, status_code: 503, response_time_ms: 0 }), checkResult({ checked_at: '2026-11-01T12:00:10Z', available: false, status_code: 503 })], 2],
-  ['один успех', [checkResult({ checked_at: '2026-11-01T12:00:00Z', response_time_ms: 0 })], 0],
+  ['успех, ошибка, успех', [checkResult({ checked_at: '2026-11-01T12:00:00Z', response_time_ms: 100 }), checkResult({ checked_at: '2026-11-01T12:00:10Z', available: false, status_code: 503, response_time_ms: 500 }), checkResult({ checked_at: '2026-11-01T12:00:20Z', response_time_ms: 110 })], 3],
+  ['успех, две ошибки, успех', [checkResult({ checked_at: '2026-11-01T12:00:00Z' }), checkResult({ checked_at: '2026-11-01T12:00:10Z', available: false, status_code: 503 }), checkResult({ checked_at: '2026-11-01T12:00:20Z', available: false, status_code: 504 }), checkResult({ checked_at: '2026-11-01T12:00:30Z' })], 4],
+  ['только успехи', [checkResult({ checked_at: '2026-11-01T12:00:00Z', response_time_ms: 0 }), checkResult({ checked_at: '2026-11-01T12:00:10Z', response_time_ms: 5000 })], 2],
+  ['только ошибки', [checkResult({ checked_at: '2026-11-01T12:00:00Z', available: false, status_code: 503, response_time_ms: 0 }), checkResult({ checked_at: '2026-11-01T12:00:10Z', available: false, status_code: 503, response_time_ms: 5000 })], 2],
+  ['один успех', [checkResult({ checked_at: '2026-11-01T12:00:00Z', response_time_ms: 0 })], 1],
   ['одна ошибка', [checkResult({ checked_at: '2026-11-01T12:00:00Z', available: false, status_code: 503, response_time_ms: 0 })], 1],
-  ['длинный пропуск', [checkResult({ checked_at: '2026-11-01T12:00:00Z' }), checkResult({ checked_at: '2026-11-01T14:00:00Z', available: false, status_code: 503 })], 1],
+  ['длинный пропуск', [checkResult({ checked_at: '2026-11-01T12:00:00Z' }), checkResult({ checked_at: '2026-11-01T14:00:00Z', available: false, status_code: 503 })], 2],
 ]) {
   test(`отображает ошибки на графике: ${scenario[0]}`, async ({ page }) => {
     await mockDashboard(page, { checks: scenario[1] })
@@ -152,9 +152,24 @@ for (const scenario of [
     await openService(page)
     const chart = page.getByTestId('history-chart')
     await expect(chart.locator('svg')).toBeVisible()
-    await expect(chart.locator('.recharts-scatter-symbol')).toHaveCount(scenario[2])
+    await expect(chart.locator('.recharts-dot')).toHaveCount(scenario[2])
   })
 }
+
+test('распределяет десять проверок с интервалом 10 секунд по временной оси', async ({ page }) => {
+  const checks = Array.from({ length: 10 }, (_, index) => checkResult({ checked_at: new Date(Date.UTC(2026, 10, 1, 12, 0, index * 10)).toISOString(), response_time_ms: [0, 100, 500, 5000][index % 4], available: index % 2 === 0 }))
+  await mockDashboard(page, { checks })
+  await page.goto('/')
+  await openService(page)
+  const dots = page.getByTestId('history-chart').locator('.recharts-dot')
+  await expect(dots).toHaveCount(10)
+  const x = await dots.evaluateAll((elements) => elements.map((element) => Number(element.getAttribute('cx'))))
+  expect(new Set(x.map((value) => value.toFixed(2))).size).toBe(10)
+  expect(Math.max(...x) - Math.min(...x)).toBeGreaterThan(200)
+  const colors = await dots.evaluateAll((elements) => elements.map((element) => element.getAttribute('fill')))
+  expect(colors).toEqual(['#40c057', '#fa5252', '#40c057', '#fa5252', '#40c057', '#fa5252', '#40c057', '#fa5252', '#40c057', '#fa5252'])
+  await expect(page.getByTestId('history-chart').locator('.recharts-line')).toHaveCount(1)
+})
 
 test('пагинирует историю отдельно от графика и меняет размер страницы', async ({ page }) => {
   const requests = []
