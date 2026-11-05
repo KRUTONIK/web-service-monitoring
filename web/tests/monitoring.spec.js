@@ -54,6 +54,13 @@ async function mockDashboard(page, { services = [service], status = serviceStatu
   let created = false
   const createdService = { ...service, id: 'service-2', name: 'Тестовый сервис', url: 'https://new.example' }
   await page.route('**/api/auth/me', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(user) }))
+  await page.route('**/api/monitoring/overview?**', (route) => {
+    const values = created ? [...services, createdService] : services
+    const url = new URL(route.request().url())
+    const offset = Number(url.searchParams.get('offset') || 0)
+    const limit = Number(url.searchParams.get('limit') || 20)
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ summary: { available: values.filter((value) => value.enabled).length, unavailable: 0, unknown: 0, paused: values.filter((value) => !value.enabled).length }, services: values.slice(offset, offset + limit).map((value) => ({ ...value, status: { state: value.enabled ? 'available' : 'paused', current: value.enabled, last_check: value.enabled ? checkResult({ service_id: value.id, service_url: value.url }) : undefined } })), pagination: { limit, offset, total: values.length } }) })
+  })
   await page.route('**/api/services', (route) => {
     if (route.request().method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(created ? [...services, createdService] : services) })
     expect(route.request().postDataJSON()).toEqual({ name: 'Тестовый сервис', url: 'https://new.example', enabled: true, interval_seconds: 60, timeout_seconds: 5 })
@@ -83,6 +90,7 @@ test('регистрирует пользователя и открывает п
   await mockUnauthenticated(page)
   await page.route('**/api/auth/register', (route) => route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(user) }))
   await page.route('**/api/services', (route) => route.fulfill({ contentType: 'application/json', body: '[]' }))
+  await page.route('**/api/monitoring/overview?**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ summary: { available: 0, unavailable: 0, unknown: 0, paused: 0 }, services: [], pagination: { limit: 20, offset: 0, total: 0 } }) }))
   await page.goto('/')
   await page.getByRole('button', { name: 'Зарегистрироваться' }).click()
   await page.getByLabel('Электронная почта').fill(user.email)
