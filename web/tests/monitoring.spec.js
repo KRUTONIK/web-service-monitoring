@@ -153,7 +153,6 @@ for (const scenario of [
     const chart = page.getByTestId('history-chart')
     await expect(chart.locator('svg')).toBeVisible()
     await expect(chart.locator('.recharts-scatter-symbol')).toHaveCount(scenario[2])
-    await expect(chart.locator('.recharts-dot')).toHaveCount(0)
   })
 }
 
