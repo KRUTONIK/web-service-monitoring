@@ -115,7 +115,7 @@ export function ServiceDashboard() {
       ) : (
         <OverviewTable services={services} onSelect={(id) => { setSelectedID(id); setHistoryPage(0); setIncidentsPage(0) }} />
       )}
-      <Group justify="space-between"><Button variant="default" disabled={overviewPage === 0} onClick={() => setOverviewPage((page) => page - 1)}>Назад</Button><Text size="sm">{overviewQuery.data.pagination.total} сервисов</Text><Button variant="default" disabled={(overviewPage + 1) * overviewPageSize >= overviewQuery.data.pagination.total} onClick={() => setOverviewPage((page) => page + 1)}>Вперёд</Button></Group>
+      <Group justify="space-between"><Button aria-label="Предыдущая страница сервисов" variant="default" disabled={overviewPage === 0} onClick={() => setOverviewPage((page) => page - 1)}>Назад</Button><Text size="sm">{overviewQuery.data.pagination.total} сервисов</Text><Button aria-label="Следующая страница сервисов" variant="default" disabled={(overviewPage + 1) * overviewPageSize >= overviewQuery.data.pagination.total} onClick={() => setOverviewPage((page) => page + 1)}>Вперёд</Button></Group>
 
       {selectedService && (
         <Card withBorder>

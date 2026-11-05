@@ -196,7 +196,7 @@ test('показывает загрузку состояния и затем р�
   await expect(page.getByRole('status', { name: 'Загрузка последней проверки' })).toBeVisible()
   releaseStatus()
   await navigation
-  await expect(page.getByText('Доступен')).toBeVisible()
+  await expect(page.getByRole('row', { name: /Основной сайт.*Доступен/ }).getByText('Доступен', { exact: true })).toBeVisible()
 })
 
 test('показывает недоступность сервиса и детали ошибки', async ({ page }) => {
