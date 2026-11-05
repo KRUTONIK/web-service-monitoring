@@ -11,17 +11,38 @@ import (
 	"github.com/KRUTONIK/web-service-monitoring/services/metrics/internal/storage"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type stubReader struct {
 	result           metric.Result
+	history          []metric.Result
 	requestedService string
+	from             time.Time
+	limit, offset    int
+	aggregate        time.Duration
 	err              error
 }
 
 func (stub *stubReader) Latest(_ context.Context, serviceID string) (metric.Result, error) {
 	stub.requestedService = serviceID
 	return stub.result, stub.err
+}
+
+func (stub *stubReader) LatestMany(_ context.Context, _ []string) ([]metric.Result, error) {
+	if stub.result.ServiceID == "" {
+		return nil, stub.err
+	}
+	return []metric.Result{stub.result}, stub.err
+}
+
+func (stub *stubReader) History(_ context.Context, serviceID string, from time.Time, limit, offset int, aggregate time.Duration) ([]metric.Result, error) {
+	stub.requestedService, stub.from, stub.limit, stub.offset, stub.aggregate = serviceID, from, limit, offset, aggregate
+	return stub.history, stub.err
+}
+
+func (stub *stubReader) Summary(_ context.Context, _ string, _ time.Time) (metric.Summary, error) {
+	return metric.Summary{}, stub.err
 }
 
 func TestGetLatestCheckReturnsNotFound(t *testing.T) {
@@ -54,5 +75,21 @@ func TestGetLatestCheck(t *testing.T) {
 	}
 	if reader.requestedService != "service-1" {
 		t.Fatalf("unexpected requested service: %q", reader.requestedService)
+	}
+}
+
+func TestGetCheckHistory(t *testing.T) {
+	from := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	reader := &stubReader{history: []metric.Result{{ServiceID: "service-1", CheckedAt: from.Add(time.Hour), Available: true, StatusCode: 200}}}
+	response, err := New(reader).GetCheckHistory(context.Background(), &metricsv1.GetCheckHistoryRequest{ServiceId: "service-1", From: timestamppb.New(from), Limit: 100, AggregateWindowSeconds: 300})
+	if err != nil || len(response.Checks) != 1 || reader.requestedService != "service-1" || !reader.from.Equal(from) || reader.limit != 100 || reader.aggregate != 5*time.Minute {
+		t.Fatalf("unexpected response=%+v err=%v reader=%+v", response, err, reader)
+	}
+}
+
+func TestGetCheckHistoryRejectsInvalidRequest(t *testing.T) {
+	_, err := New(&stubReader{}).GetCheckHistory(context.Background(), &metricsv1.GetCheckHistoryRequest{ServiceId: "service-1"})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("unexpected status code: %s", status.Code(err))
 	}
 }

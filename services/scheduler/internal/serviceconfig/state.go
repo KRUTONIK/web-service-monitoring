@@ -14,6 +14,7 @@ type Service struct {
 	TimeoutSeconds  int       `json:"timeout_seconds"`
 	Version         int64     `json:"version"`
 	UpdatedAt       time.Time `json:"updated_at"`
+	ScheduledAt     time.Time `json:"-"`
 }
 
 type Snapshot struct {

@@ -11,8 +11,26 @@ import (
 )
 
 type stubPublisher struct {
-	services []serviceconfig.Service
-	err      error
+	services  []serviceconfig.Service
+	scheduled []time.Time
+	err       error
+	calls     int
+}
+
+func TestScheduleRunsTenSecondServiceOnOneSecondTicks(t *testing.T) {
+	state := serviceconfig.NewState()
+	state.Replace(serviceconfig.Snapshot{Services: []serviceconfig.Service{{ID: "service-1", URL: "https://service.test", Enabled: true, IntervalSeconds: 10}}})
+	publisher := &stubPublisher{}
+	scheduler := New(state, publisher)
+	now := time.Date(2026, time.November, 2, 12, 0, 0, 0, time.UTC)
+	for second := 0; second <= 20; second++ {
+		if err := scheduler.scheduleAt(context.Background(), now.Add(time.Duration(second)*time.Second)); err != nil {
+			t.Fatalf("schedule at %d seconds: %v", second, err)
+		}
+	}
+	if publisher.calls != 3 {
+		t.Fatalf("expected checks at 0, 10 and 20 seconds, got %d publications", publisher.calls)
+	}
 }
 
 func TestScheduleRespectsIndividualIntervals(t *testing.T) {
@@ -63,8 +81,66 @@ func TestScheduleAppliesChangedIntervalWithoutRestart(t *testing.T) {
 }
 
 func (stub *stubPublisher) PublishJobs(_ context.Context, services []serviceconfig.Service) error {
+	stub.calls++
 	stub.services = services
+	for _, service := range services {
+		stub.scheduled = append(stub.scheduled, service.ScheduledAt)
+	}
 	return stub.err
+}
+
+func TestSchedulePreservesPlannedTimeAfterTickDrift(t *testing.T) {
+	state := serviceconfig.NewState()
+	state.Replace(serviceconfig.Snapshot{Services: []serviceconfig.Service{{ID: "service-1", URL: "https://service.test", Enabled: true, IntervalSeconds: 10}}})
+	publisher := &stubPublisher{}
+	scheduler := New(state, publisher)
+	start := time.Date(2026, time.November, 2, 12, 0, 0, 0, time.UTC)
+
+	for _, now := range []time.Time{start, start.Add(10*time.Second + 200*time.Millisecond), start.Add(20*time.Second + 100*time.Millisecond)} {
+		if err := scheduler.scheduleAt(context.Background(), now); err != nil {
+			t.Fatalf("schedule at %s: %v", now, err)
+		}
+	}
+
+	want := []time.Time{start, start.Add(10 * time.Second), start.Add(20 * time.Second)}
+	if len(publisher.scheduled) != len(want) {
+		t.Fatalf("scheduled jobs: %v", publisher.scheduled)
+	}
+	for index := range want {
+		if !publisher.scheduled[index].Equal(want[index]) {
+			t.Fatalf("job %d planned for %s, want %s", index, publisher.scheduled[index], want[index])
+		}
+	}
+}
+
+func TestScheduleUsesLatestPlannedIntervalAfterLongDelay(t *testing.T) {
+	state := serviceconfig.NewState()
+	state.Replace(serviceconfig.Snapshot{Services: []serviceconfig.Service{{ID: "service-1", URL: "https://service.test", Enabled: true, IntervalSeconds: 10}}})
+	publisher := &stubPublisher{}
+	scheduler := New(state, publisher)
+	start := time.Date(2026, time.November, 2, 12, 0, 0, 0, time.UTC)
+
+	if err := scheduler.scheduleAt(context.Background(), start); err != nil {
+		t.Fatalf("schedule initial job: %v", err)
+	}
+	if err := scheduler.scheduleAt(context.Background(), start.Add(45*time.Second)); err != nil {
+		t.Fatalf("schedule delayed tick: %v", err)
+	}
+	if err := scheduler.scheduleAt(context.Background(), start.Add(46*time.Second)); err != nil {
+		t.Fatalf("schedule following tick: %v", err)
+	}
+	if err := scheduler.scheduleAt(context.Background(), start.Add(50*time.Second)); err != nil {
+		t.Fatalf("schedule next planned tick: %v", err)
+	}
+	want := []time.Time{start, start.Add(40 * time.Second), start.Add(50 * time.Second)}
+	if len(publisher.scheduled) != len(want) {
+		t.Fatalf("scheduled jobs: %v", publisher.scheduled)
+	}
+	for index := range want {
+		if !publisher.scheduled[index].Equal(want[index]) {
+			t.Fatalf("job %d planned for %s, want %s", index, publisher.scheduled[index], want[index])
+		}
+	}
 }
 
 func TestScheduleReturnsPublisherError(t *testing.T) {

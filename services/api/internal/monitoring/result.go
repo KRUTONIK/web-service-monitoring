@@ -16,3 +16,20 @@ type Result struct {
 	ResponseTimeMS int64     `json:"response_time_ms"`
 	Error          string    `json:"error,omitempty"`
 }
+
+type History struct {
+	Checks []Result `json:"checks"`
+	Limit  int      `json:"limit"`
+	Offset int      `json:"offset"`
+}
+
+type Summary struct {
+	TotalChecks        int64   `json:"total_checks"`
+	SuccessfulChecks   int64   `json:"successful_checks"`
+	SuccessRate        float64 `json:"success_rate"`
+	AverageResponseMS  float64 `json:"average_response_ms"`
+	P95ResponseMS      int64   `json:"p95_response_ms"`
+	HasResponseMetrics bool    `json:"has_response_metrics"`
+	IncidentCount      int     `json:"incident_count"`
+	DowntimeSeconds    int64   `json:"downtime_seconds"`
+}

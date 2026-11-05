@@ -3,6 +3,8 @@ package grpcapi
 import (
 	"context"
 	"errors"
+	"log"
+	"time"
 
 	metricsv1 "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/metrics/v1"
 	"github.com/KRUTONIK/web-service-monitoring/services/metrics/internal/metric"
@@ -14,6 +16,52 @@ import (
 
 type resultReader interface {
 	Latest(context.Context, string) (metric.Result, error)
+	LatestMany(context.Context, []string) ([]metric.Result, error)
+	History(context.Context, string, time.Time, int, int, time.Duration) ([]metric.Result, error)
+	Summary(context.Context, string, time.Time) (metric.Summary, error)
+}
+
+func (server *Server) GetLatestChecks(ctx context.Context, request *metricsv1.GetLatestChecksRequest) (*metricsv1.GetLatestChecksResponse, error) {
+	if len(request.GetServiceIds()) == 0 {
+		return &metricsv1.GetLatestChecksResponse{}, nil
+	}
+	results, err := server.reader.LatestMany(ctx, request.GetServiceIds())
+	if err != nil {
+		return nil, status.Error(codes.Internal, "failed to read monitoring data")
+	}
+	checks := make([]*metricsv1.CheckResult, 0, len(results))
+	for _, result := range results {
+		checks = append(checks, &metricsv1.CheckResult{ServiceId: result.ServiceID, ServiceUrl: result.ServiceURL, CheckedAt: timestamppb.New(result.CheckedAt), Available: result.Available, StatusCode: int32(result.StatusCode), ResponseTimeMs: result.ResponseTimeMS, Error: result.Error})
+	}
+	return &metricsv1.GetLatestChecksResponse{Checks: checks}, nil
+}
+
+func (server *Server) GetCheckSummary(ctx context.Context, request *metricsv1.GetCheckSummaryRequest) (*metricsv1.GetCheckSummaryResponse, error) {
+	if request.GetFrom() == nil || !request.GetFrom().IsValid() || request.GetServiceId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "invalid summary request")
+	}
+	summary, err := server.reader.Summary(ctx, request.GetServiceId(), request.GetFrom().AsTime())
+	if err != nil {
+		log.Printf("get check summary service_id=%s: %v", request.GetServiceId(), err)
+		return nil, status.Error(codes.Internal, "failed to read monitoring data")
+	}
+	return &metricsv1.GetCheckSummaryResponse{TotalChecks: summary.TotalChecks, SuccessfulChecks: summary.SuccessfulChecks, HasResponseMetrics: summary.HasResponseMetrics, AverageResponseMs: summary.AverageResponseMS, P95ResponseMs: summary.P95ResponseMS}, nil
+}
+
+func (server *Server) GetCheckHistory(ctx context.Context, request *metricsv1.GetCheckHistoryRequest) (*metricsv1.GetCheckHistoryResponse, error) {
+	if request.GetFrom() == nil || !request.GetFrom().IsValid() || request.GetServiceId() == "" || request.GetLimit() < 1 || request.GetOffset() < 0 {
+		return nil, status.Error(codes.InvalidArgument, "invalid history request")
+	}
+	aggregateWindow := time.Duration(request.GetAggregateWindowSeconds()) * time.Second
+	results, err := server.reader.History(ctx, request.GetServiceId(), request.GetFrom().AsTime(), int(request.GetLimit()), int(request.GetOffset()), aggregateWindow)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "failed to read monitoring data")
+	}
+	checks := make([]*metricsv1.CheckResult, 0, len(results))
+	for _, result := range results {
+		checks = append(checks, &metricsv1.CheckResult{ServiceId: result.ServiceID, ServiceUrl: result.ServiceURL, CheckedAt: timestamppb.New(result.CheckedAt), Available: result.Available, StatusCode: int32(result.StatusCode), ResponseTimeMs: result.ResponseTimeMS, Error: result.Error})
+	}
+	return &metricsv1.GetCheckHistoryResponse{Checks: checks}, nil
 }
 
 type Server struct {
