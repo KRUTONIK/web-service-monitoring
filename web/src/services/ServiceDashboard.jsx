@@ -109,6 +109,7 @@ export function ServiceDashboard({ serviceID, onNavigate }) {
   const metricsQuery = useQuery({ queryKey: ['service-metrics', currentServiceID, historyPeriod], queryFn: () => apiRequest(`/api/services/${currentServiceID}/metrics?period=${historyPeriod}`), enabled: Boolean(currentServiceID), retry: false, refetchInterval: 30_000 })
 
   if (overviewQuery.isPending && !detailMode) return <Loader />
+  if (!detailMode && overviewQuery.isError) return <Stack><Alert color="red">Не удалось загрузить список сервисов: {overviewQuery.error.message}</Alert><Button w="fit-content" variant="default" onClick={() => overviewQuery.refetch()}>Повторить</Button></Stack>
 
   const selectedService = selectedServiceQuery.data
   if (detailMode && selectedServiceQuery.isError) {
@@ -125,7 +126,6 @@ export function ServiceDashboard({ serviceID, onNavigate }) {
         <Button onClick={() => setCreating(true)}>Добавить сервис</Button>
       </Group>}
 
-      {!detailMode && overviewQuery.isError && <Alert color="red">{overviewQuery.error.message}</Alert>}
       {!detailMode && <>
       <OverviewCounters summary={overviewQuery.data.summary} />
       <Group grow align="end"><TextInput label="Поиск" value={searchInput} onChange={(event) => setSearchInput(event.currentTarget.value)} placeholder="Название или URL" /><Select label="Состояние" value={statusFilter} onChange={(value) => { if (value !== null && value !== statusFilter) { setStatusFilter(value); setOverviewPage(0) } }} allowDeselect={false} data={[{ value: '', label: 'Все состояния' }, { value: 'available', label: 'Доступные' }, { value: 'unavailable', label: 'Недоступные' }, { value: 'unknown', label: 'Нет данных' }, { value: 'paused', label: 'Отключённые' }]} /><Select label="Сортировка" value={overviewSort} onChange={(value) => { if (value && value !== overviewSort) { setOverviewSort(value); setOverviewDirection(value === 'checked_at' ? 'desc' : 'asc'); setOverviewPage(0) } }} allowDeselect={false} data={[{ value: 'state', label: 'По состоянию' }, { value: 'name', label: 'По названию' }, { value: 'checked_at', label: 'По времени проверки' }]} /><Select label="Порядок сортировки" value={overviewDirection} onChange={(value) => { if (value && value !== overviewDirection) { setOverviewDirection(value); setOverviewPage(0) } }} allowDeselect={false} data={[{ value: 'asc', label: overviewSort === 'checked_at' ? 'Сначала старые' : 'По возрастанию' }, { value: 'desc', label: overviewSort === 'checked_at' ? 'Сначала новые' : 'По убыванию' }]} /><Select label="На странице" value={String(overviewPageSize)} onChange={(value) => { const size = Number(value); if (value && size !== overviewPageSize) { setOverviewPageSize(size); setOverviewPage(0) } }} allowDeselect={false} data={['10', '20', '50']} /></Group>
