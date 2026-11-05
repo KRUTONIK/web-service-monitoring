@@ -268,8 +268,7 @@ test('при переключении сервиса показывает тол
   })
   await page.goto('/')
   await expect(statusResponseTime(page, '42 мс')).toBeVisible()
-  await page.getByRole('textbox', { name: 'Выбранный сервис' }).click()
-  await page.getByRole('option', { name: 'Второй сайт', exact: true }).click()
+  await page.getByRole('row', { name: /Второй сайт.*https:\/\/second\.example/ }).click()
   await expect(statusResponseTime(page, '99 мс')).toBeVisible()
   await expect(page.getByText('Недоступен', { exact: true })).toBeVisible()
 })
@@ -292,7 +291,7 @@ test('изменяет сервис', async ({ page }) => {
   await page.getByLabel('Тайм-аут, с').fill('7')
   await page.getByRole('button', { name: 'Сохранить' }).click()
   await expect(page.getByRole('heading', { name: updated.name })).toBeVisible()
-  await expect(page.getByText(updated.url)).toBeVisible()
+  await expect(page.getByRole('heading', { name: updated.name }).locator('..').getByText(updated.url, { exact: true })).toBeVisible()
 })
 
 test('удаляет сервис из списка', async ({ page }) => {

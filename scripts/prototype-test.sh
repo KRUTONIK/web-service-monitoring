@@ -14,7 +14,10 @@ cleanup() {
 }
 
 service_id() {
-    "${COMPOSE[@]}" ps -q "$1" | head -n 1
+    local ids id
+    ids=$("${COMPOSE[@]}" ps -q "$1")
+    IFS=$'\n' read -r id _ <<< "$ids"
+    printf '%s\n' "$id"
 }
 
 fail() {
