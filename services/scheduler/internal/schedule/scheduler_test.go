@@ -113,7 +113,7 @@ func TestSchedulePreservesPlannedTimeAfterTickDrift(t *testing.T) {
 	}
 }
 
-func TestScheduleDoesNotCatchUpMissedIntervalsInBurst(t *testing.T) {
+func TestScheduleUsesLatestPlannedIntervalAfterLongDelay(t *testing.T) {
 	state := serviceconfig.NewState()
 	state.Replace(serviceconfig.Snapshot{Services: []serviceconfig.Service{{ID: "service-1", URL: "https://service.test", Enabled: true, IntervalSeconds: 10}}})
 	publisher := &stubPublisher{}
@@ -129,8 +129,17 @@ func TestScheduleDoesNotCatchUpMissedIntervalsInBurst(t *testing.T) {
 	if err := scheduler.scheduleAt(context.Background(), start.Add(46*time.Second)); err != nil {
 		t.Fatalf("schedule following tick: %v", err)
 	}
-	if publisher.calls != 2 {
-		t.Fatalf("expected one delayed job without catch-up burst, got %d publications", publisher.calls)
+	if err := scheduler.scheduleAt(context.Background(), start.Add(50*time.Second)); err != nil {
+		t.Fatalf("schedule next planned tick: %v", err)
+	}
+	want := []time.Time{start, start.Add(40 * time.Second), start.Add(50 * time.Second)}
+	if len(publisher.scheduled) != len(want) {
+		t.Fatalf("scheduled jobs: %v", publisher.scheduled)
+	}
+	for index := range want {
+		if !publisher.scheduled[index].Equal(want[index]) {
+			t.Fatalf("job %d planned for %s, want %s", index, publisher.scheduled[index], want[index])
+		}
 	}
 }
 

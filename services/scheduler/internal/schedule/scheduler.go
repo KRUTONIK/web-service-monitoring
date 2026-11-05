@@ -56,6 +56,9 @@ func (scheduler *Scheduler) scheduleAt(ctx context.Context, now time.Time) error
 		if now.Before(next) {
 			continue
 		}
+		if missed := now.Sub(next) / interval; missed > 0 {
+			next = next.Add(missed * interval)
+		}
 		service.ScheduledAt = next
 		due = append(due, service)
 	}
@@ -67,11 +70,7 @@ func (scheduler *Scheduler) scheduleAt(ctx context.Context, now time.Time) error
 	}
 	for _, service := range due {
 		interval := time.Duration(service.IntervalSeconds) * time.Second
-		next := service.ScheduledAt.Add(interval)
-		if !next.After(now) {
-			next = now.Add(interval)
-		}
-		scheduler.nextScheduled[service.ID] = next
+		scheduler.nextScheduled[service.ID] = service.ScheduledAt.Add(interval)
 	}
 	return nil
 }
