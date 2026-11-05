@@ -115,15 +115,15 @@ func (influx *InfluxDB) Summary(ctx context.Context, serviceID string, from time
 	}
 	base := `|> pivot(rowKey: ["_time", "job_id", "service_id", "service_url"], columnKey: ["_field"], valueColumn: "_value")
   |> filter(fn: (r) => r.available == true)
-  |> map(fn: (r) => ({r with response_time_ms: float(v: r.response_time_ms)}))
+  |> map(fn: (r) => ({r with _value: float(v: r.response_time_ms)}))
   |> group()`
 	average, err := influx.scalar(ctx, influx.summaryQuery(serviceID, from, base+`
-  |> mean(column: "response_time_ms")`))
+  |> mean()`))
 	if err != nil {
 		return metric.Summary{}, err
 	}
 	p95, err := influx.scalar(ctx, influx.summaryQuery(serviceID, from, base+`
-  |> quantile(column: "response_time_ms", q: 0.95, method: "exact_selector")`))
+  |> quantile(q: 0.95, method: "exact_selector")`))
 	if err != nil {
 		return metric.Summary{}, err
 	}

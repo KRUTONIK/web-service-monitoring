@@ -92,27 +92,54 @@ func TestSummaryQueryHasNoLimitForLargePeriods(t *testing.T) {
 	}
 }
 
-func TestSummaryResponseTimeIsConvertedToFloatForP95(t *testing.T) {
-	query := NewInfluxDB(nil, "", "", "bucket", "").summaryQuery("service-1", time.Now().Add(-time.Hour), `|> map(fn: (r) => ({r with response_time_ms: float(v: r.response_time_ms)}))
-  |> quantile(column: "response_time_ms", q: 0.95, method: "exact_selector")`)
-	if !strings.Contains(query, `float(v: r.response_time_ms)`) || !strings.Contains(query, `quantile(column: "response_time_ms", q: 0.95, method: "exact_selector")`) {
-		t.Fatalf("P95 query must convert response_time_ms to float: %s", query)
+func TestSummaryResponseTimeIsConvertedToValueForAggregates(t *testing.T) {
+	query := NewInfluxDB(nil, "", "", "bucket", "").summaryQuery("service-1", time.Now().Add(-time.Hour), `|> map(fn: (r) => ({r with _value: float(v: r.response_time_ms)}))
+  |> quantile(q: 0.95, method: "exact_selector")`)
+	if !strings.Contains(query, `_value: float(v: r.response_time_ms)`) || !strings.Contains(query, `quantile(q: 0.95, method: "exact_selector")`) {
+		t.Fatalf("P95 query must convert response_time_ms to _value: %s", query)
 	}
 }
 
 func TestSummaryParsesAggregateResponses(t *testing.T) {
 	values := []string{"2", "1", "0", "0"}
 	requestCount := 0
+	queries := make([]string, 0, len(values))
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		requestCount++
 		if requestCount > len(values) {
 			t.Fatal("unexpected aggregate query")
 		}
+		query, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatalf("read aggregate query: %v", err)
+		}
+		queries = append(queries, string(query))
 		_, _ = io.WriteString(writer, "#datatype,string,long\n#group,false,false\n#default,_result,,\n,result,table,_value\n,,0,"+values[requestCount-1]+"\n")
 	}))
 	defer server.Close()
 	summary, err := NewInfluxDB(server.Client(), server.URL, "org", "bucket", "token").Summary(context.Background(), "service-1", time.Now().Add(-time.Hour))
 	if err != nil || summary.TotalChecks != 2 || summary.SuccessfulChecks != 1 || !summary.HasResponseMetrics || summary.AverageResponseMS != 0 || summary.P95ResponseMS != 0 || requestCount != 4 {
+		t.Fatalf("unexpected summary=%+v err=%v requests=%d", summary, err, requestCount)
+	}
+	if !strings.Contains(queries[0], `count(column: "_value")`) || !strings.Contains(queries[1], `count(column: "_value")`) || !strings.Contains(queries[2], `_value: float(v: r.response_time_ms)`) || !strings.Contains(queries[2], `mean()`) || !strings.Contains(queries[3], `_value: float(v: r.response_time_ms)`) || !strings.Contains(queries[3], `quantile(q: 0.95, method: "exact_selector")`) {
+		t.Fatalf("unexpected aggregate queries: %v", queries)
+	}
+}
+
+func TestSummarySkipsResponseMetricsWithoutSuccessfulChecks(t *testing.T) {
+	values := []string{"2", "0"}
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		if requestCount >= len(values) {
+			t.Fatal("response metrics must not be requested without successful checks")
+		}
+		_, _ = io.WriteString(writer, "#datatype,string,long\n#group,false,false\n#default,_result,,\n,result,table,_value\n,,0,"+values[requestCount]+"\n")
+		requestCount++
+	}))
+	defer server.Close()
+
+	summary, err := NewInfluxDB(server.Client(), server.URL, "org", "bucket", "token").Summary(context.Background(), "service-1", time.Now().Add(-time.Hour))
+	if err != nil || summary.TotalChecks != 2 || summary.SuccessfulChecks != 0 || summary.HasResponseMetrics || requestCount != 2 {
 		t.Fatalf("unexpected summary=%+v err=%v requests=%d", summary, err, requestCount)
 	}
 }
