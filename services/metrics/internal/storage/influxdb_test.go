@@ -92,6 +92,14 @@ func TestSummaryQueryHasNoLimitForLargePeriods(t *testing.T) {
 	}
 }
 
+func TestSummaryResponseTimeIsConvertedToFloatForP95(t *testing.T) {
+	query := NewInfluxDB(nil, "", "", "bucket", "").summaryQuery("service-1", time.Now().Add(-time.Hour), `|> map(fn: (r) => ({r with response_time_ms: float(v: r.response_time_ms)}))
+  |> quantile(column: "response_time_ms", q: 0.95, method: "exact_selector")`)
+	if !strings.Contains(query, `float(v: r.response_time_ms)`) || !strings.Contains(query, `quantile(column: "response_time_ms", q: 0.95, method: "exact_selector")`) {
+		t.Fatalf("P95 query must convert response_time_ms to float: %s", query)
+	}
+}
+
 func TestSummaryParsesAggregateResponses(t *testing.T) {
 	values := []string{"2", "1", "0", "0"}
 	requestCount := 0
