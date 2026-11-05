@@ -27,7 +27,7 @@ func Send(cfg SMTPConfig, event notifications.Event) (result error) {
 	if err != nil {
 		return err
 	}
-	subject, body := Compose(event, "")
+	subject, body := Compose(event, cfg.WebPublicURL)
 	message := "From: " + from.String() + "\r\nTo: " + to.String() + "\r\nSubject: =?UTF-8?B?" + base64.StdEncoding.EncodeToString([]byte(subject)) + "?=\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" + body
 	connection, err := net.DialTimeout("tcp", cfg.Address, 10*time.Second)
 	if err != nil {
@@ -97,6 +97,9 @@ func Compose(event notifications.Event, webURL string) (string, string) {
 	}
 	if event.Error != "" {
 		details += "\nОшибка: " + truncate(event.Error, 500)
+	}
+	if event.ResponseTimeMS > 0 {
+		details += fmt.Sprintf("\nВремя ответа: %d мс", event.ResponseTimeMS)
 	}
 	return "[Мониторинг] Недоступен сервис «" + event.ServiceName + "»", fmt.Sprintf("Сервис: %s\nURL: %s\nНачало сбоя: %s UTC%s\nТекущее состояние: недоступен%s", event.ServiceName, event.ServiceURL, event.OccurredAt.UTC().Format(time.RFC3339), details, link)
 }

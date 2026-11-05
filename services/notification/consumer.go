@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -66,8 +67,11 @@ func consume(ctx context.Context, connection *amqp.Connection, database *gorm.DB
 				}
 				continue
 			}
-			var sent delivery
-			if database.Where("event_id = ? AND status = ?", event.ID, "sent").First(&sent).Error == nil {
+			alreadySent, err := deliveryAlreadySent(database, event.ID)
+			if err != nil {
+				return fmt.Errorf("find notification delivery: %w", err)
+			}
+			if alreadySent {
 				if err := message.Ack(false); err != nil {
 					return err
 				}
@@ -104,6 +108,24 @@ func consume(ctx context.Context, connection *amqp.Connection, database *gorm.DB
 			}
 		}
 	}
+}
+
+// deliveryAlreadySent distinguishes an absent delivery from an unavailable
+// database. Only an explicit not-found result permits an SMTP attempt.
+func deliveryAlreadySent(database *gorm.DB, eventID string) (bool, error) {
+	var sent delivery
+	err := database.Where("event_id = ? AND status = ?", eventID, "sent").First(&sent).Error
+	return deliveryLookupResult(err)
+}
+
+func deliveryLookupResult(err error) (bool, error) {
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	return false, err
 }
 
 func publishConfirmed(parent context.Context, channel *amqp.Channel, confirms <-chan amqp.Confirmation, returns <-chan amqp.Return, closed <-chan *amqp.Error, target string, body []byte, headers amqp.Table) error {

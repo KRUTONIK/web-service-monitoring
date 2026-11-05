@@ -70,9 +70,11 @@ docker compose up --build -d
 - Mailpit: <http://localhost:8025>
 
 Mailpit принимает локальную почту на `mailpit:1025` и не пересылает её во
-внешнюю сеть. Для внешнего SMTP задайте `SMTP_ADDRESS`, `SMTP_FROM`,
-`SMTP_USERNAME`, `SMTP_PASSWORD` и `SMTP_TLS=true`; TLS-сертификаты
-проверяются стандартной библиотекой Go.
+внешнюю сеть. Для внешнего SMTP задайте в `.env` (см. `.env.example`)
+`SMTP_ADDRESS`, `SMTP_FROM`, `SMTP_USERNAME`, `SMTP_PASSWORD` и
+`SMTP_TLS=true`; TLS-сертификаты проверяются стандартной библиотекой Go.
+`WEB_PUBLIC_URL` добавляет в письмо ссылку на страницу сервиса. Пароль SMTP
+не выводится в журналы.
 
 Остановить сервисы, сохранив данные:
 

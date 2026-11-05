@@ -101,9 +101,12 @@ services:
     environment:
       RABBITMQ_URL: amqp://monitoring:monitoring@rabbitmq:5672/
       POSTGRES_DSN: postgres://monitoring:monitoring@postgres:5432/monitoring?sslmode=disable
-      SMTP_ADDRESS: mailpit:1025
-      SMTP_FROM: monitoring@local.test
-      WEB_PUBLIC_URL: http://localhost:5173
+      SMTP_ADDRESS: ${SMTP_ADDRESS:-mailpit:1025}
+      SMTP_FROM: ${SMTP_FROM:-monitoring@local.test}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_TLS: ${SMTP_TLS:-false}
+      WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-http://localhost:5173}
     depends_on:
       postgres:
         condition: service_healthy
@@ -115,7 +118,7 @@ services:
   mailpit:
     image: axllent/mailpit:v1.27.4
     ports:
-      - "8025:8025"
+      - "127.0.0.1:8025:8025"
 
   web:
     build:
