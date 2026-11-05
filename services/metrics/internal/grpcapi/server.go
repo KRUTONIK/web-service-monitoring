@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	metricsv1 "github.com/KRUTONIK/web-service-monitoring/contracts/gen/go/monitoring/metrics/v1"
@@ -16,6 +17,19 @@ import (
 type resultReader interface {
 	Latest(context.Context, string) (metric.Result, error)
 	History(context.Context, string, time.Time, int, int, time.Duration) ([]metric.Result, error)
+	Summary(context.Context, string, time.Time) (metric.Summary, error)
+}
+
+func (server *Server) GetCheckSummary(ctx context.Context, request *metricsv1.GetCheckSummaryRequest) (*metricsv1.GetCheckSummaryResponse, error) {
+	if request.GetFrom() == nil || !request.GetFrom().IsValid() || request.GetServiceId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "invalid summary request")
+	}
+	summary, err := server.reader.Summary(ctx, request.GetServiceId(), request.GetFrom().AsTime())
+	if err != nil {
+		log.Printf("get check summary service_id=%s: %v", request.GetServiceId(), err)
+		return nil, status.Error(codes.Internal, "failed to read monitoring data")
+	}
+	return &metricsv1.GetCheckSummaryResponse{TotalChecks: summary.TotalChecks, SuccessfulChecks: summary.SuccessfulChecks, HasResponseMetrics: summary.HasResponseMetrics, AverageResponseMs: summary.AverageResponseMS, P95ResponseMs: summary.P95ResponseMS}, nil
 }
 
 func (server *Server) GetCheckHistory(ctx context.Context, request *metricsv1.GetCheckHistoryRequest) (*metricsv1.GetCheckHistoryResponse, error) {

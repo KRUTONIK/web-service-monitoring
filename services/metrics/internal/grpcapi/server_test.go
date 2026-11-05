@@ -34,6 +34,10 @@ func (stub *stubReader) History(_ context.Context, serviceID string, from time.T
 	return stub.history, stub.err
 }
 
+func (stub *stubReader) Summary(_ context.Context, _ string, _ time.Time) (metric.Summary, error) {
+	return metric.Summary{}, stub.err
+}
+
 func TestGetLatestCheckReturnsNotFound(t *testing.T) {
 	server := New(&stubReader{err: storage.ErrNotFound})
 	_, err := server.GetLatestCheck(context.Background(), &metricsv1.GetLatestCheckRequest{})

@@ -76,13 +76,16 @@ export function ServiceDashboard() {
     queryFn: () => apiRequest(`/api/services/${currentServiceID}/checks?period=${historyPeriod}&chart=true&limit=10000&offset=0`),
     enabled: Boolean(currentServiceID),
     retry: false,
+    refetchInterval: historyPeriod === '24h' ? 10_000 : 30_000,
   })
   const historyQuery = useQuery({
     queryKey: ['check-history-page', currentServiceID, historyPeriod, historyPage, historyPageSize],
     queryFn: () => apiRequest(`/api/services/${currentServiceID}/checks?period=${historyPeriod}&limit=${historyPageSize + 1}&offset=${historyPage * historyPageSize}`),
     enabled: Boolean(currentServiceID),
     retry: false,
+    refetchInterval: 10_000,
   })
+  const metricsQuery = useQuery({ queryKey: ['service-metrics', currentServiceID, historyPeriod], queryFn: () => apiRequest(`/api/services/${currentServiceID}/metrics?period=${historyPeriod}`), enabled: Boolean(currentServiceID), retry: false, refetchInterval: 30_000 })
 
   if (servicesQuery.isPending) return <Loader />
   if (servicesQuery.isError) return <Alert color="red">{servicesQuery.error.message}</Alert>
@@ -125,7 +128,8 @@ export function ServiceDashboard() {
         </Card>
       )}
 
-      {selectedService && <ServiceStatus query={statusQuery} refreshing={servicesQuery.isFetching || incidentsQuery.isFetching || chartQuery.isFetching || historyQuery.isFetching} onRefresh={() => Promise.all([servicesQuery.refetch(), statusQuery.refetch(), incidentsQuery.refetch(), chartQuery.refetch(), historyQuery.refetch()])} />}
+      {selectedService && <ServiceStatus query={statusQuery} />}
+      {selectedService && <MonitoringMetrics query={metricsQuery} />}
       {selectedService && <CheckHistory chartQuery={chartQuery} query={historyQuery} period={historyPeriod} page={historyPage} pageSize={historyPageSize} onPeriodChange={(value) => { setHistoryPeriod(value); setHistoryPage(0) }} onPageChange={setHistoryPage} onPageSizeChange={(value) => { setHistoryPageSize(Number(value)); setHistoryPage(0) }} />}
       {selectedService && <Incidents query={incidentsQuery} />}
 
@@ -139,6 +143,17 @@ export function ServiceDashboard() {
       </Modal>
     </Stack>
   )
+}
+
+function MonitoringMetrics({ query }) {
+  if (query.isPending) return <Card withBorder><Text c="dimmed">Загрузка показателей…</Text></Card>
+  if (query.isError) return <Alert color="red">{query.error.message}</Alert>
+  const metrics = query.data
+  if (metrics.total_checks === 0) return <Card withBorder><Title order={3}>Показатели мониторинга</Title><Text c="dimmed">За выбранный период проверок не было.</Text></Card>
+  const duration = metrics.downtime_seconds >= 60 ? `${Math.floor(metrics.downtime_seconds / 60)} мин ${metrics.downtime_seconds % 60} с` : `${metrics.downtime_seconds} с`
+  const responseValue = metrics.has_response_metrics ? `${Math.round(metrics.average_response_ms)} мс` : '—'
+  const p95Value = metrics.has_response_metrics ? `${metrics.p95_response_ms} мс` : '—'
+  return <Card withBorder><Stack gap="sm"><Title order={3}>Показатели мониторинга</Title><SimpleGrid cols={{ base: 1, sm: 3 }}><Metric label="Успешные проверки" value={`${metrics.success_rate.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}%`} /><Metric label="Среднее время ответа" value={responseValue} /><Metric label="P95" value={p95Value} /><Metric label="Инциденты" value={metrics.incident_count} /><Metric label="Время недоступности" value={duration} /></SimpleGrid></Stack></Card>
 }
 
 function CheckHistory({ chartQuery, query, period, page, pageSize, onPeriodChange, onPageChange, onPageSizeChange }) {
@@ -206,7 +221,7 @@ function Incidents({ query }) {
   return <Card withBorder><Stack gap="sm"><Title order={3}>Инциденты</Title>{incidents.map((incident) => <div key={incident.id}><Group justify="space-between"><Text fw={600}>{incident.ended_at ? 'Завершённый сбой' : 'Текущий сбой'}</Text><Badge color={incident.ended_at ? 'gray' : 'red'}>{duration(incident)}</Badge></Group><Text size="sm" c="dimmed">Начало: {formatDate(incident.started_at)}</Text>{incident.ended_at && <Text size="sm" c="dimmed">Завершение: {formatDate(incident.ended_at)}</Text>}</div>)}</Stack></Card>
 }
 
-function ServiceStatus({ query, refreshing, onRefresh }) {
+function ServiceStatus({ query }) {
   if (query.isPending) return <div role="status" aria-label="Загрузка последней проверки"><Loader size="sm" /></div>
   if (query.isError) {
     return <Alert color="red">{query.error.message}</Alert>
@@ -217,7 +232,7 @@ function ServiceStatus({ query, refreshing, onRefresh }) {
   return (
     <Card withBorder>
       <Stack gap="sm">
-        <Group justify="space-between"><Title order={3}>Состояние сервиса</Title><Group gap="sm"><Badge color={presentation.color}>{presentation.label}</Badge><Button variant="default" size="xs" loading={refreshing} onClick={onRefresh}>Обновить</Button></Group></Group>
+        <Group justify="space-between"><Title order={3}>Состояние сервиса</Title><Badge color={presentation.color}>{presentation.label}</Badge></Group>
         {!check && status.state === 'unknown' && <Text c="dimmed">Проверок для сервиса пока нет.</Text>}
         {check && <>
           {!status.current && <Text c="dimmed">Показан последний известный результат.</Text>}

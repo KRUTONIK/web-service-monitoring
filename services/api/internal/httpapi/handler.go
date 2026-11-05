@@ -23,6 +23,7 @@ import (
 type checkReader interface {
 	Latest(context.Context, string) (monitoring.Result, error)
 	History(context.Context, string, time.Time, int, int, time.Duration) (monitoring.History, error)
+	Summary(context.Context, string, time.Time) (monitoring.Summary, error)
 }
 
 type authentication interface {
@@ -71,8 +72,80 @@ func New(checks checkReader, authService authentication, sessions *scs.SessionMa
 	mux.HandleFunc("GET /api/checks/latest", handler.latestCheck)
 	mux.HandleFunc("GET /api/services/{id}/status", handler.serviceStatus)
 	mux.HandleFunc("GET /api/services/{id}/checks", handler.checkHistory)
+	mux.HandleFunc("GET /api/services/{id}/metrics", handler.serviceMetrics)
 	mux.HandleFunc("GET /api/services/{id}/incidents", handler.listIncidents)
 	return handler.allowCORS(mux)
+}
+
+func (handler *handler) serviceMetrics(writer http.ResponseWriter, request *http.Request) {
+	currentUser, ok := handler.currentUser(writer, request)
+	if !ok {
+		return
+	}
+	service, err := handler.services.ByIDAndOwner(request.Context(), currentUser.ID, request.PathValue("id"))
+	if errors.Is(err, serviceconfig.ErrNotFound) {
+		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "Сервис не найден"})
+		return
+	}
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось проверить доступ к сервису"})
+		return
+	}
+	period, duration, valid := metricsPeriod(request.URL.Query().Get("period"))
+	if !valid {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Недопустимый период показателей"})
+		return
+	}
+	_ = period
+	now := time.Now().UTC()
+	from := now.Add(-duration)
+	summary, err := handler.checks.Summary(request.Context(), service.ID, from)
+	if err != nil {
+		writeJSON(writer, http.StatusBadGateway, map[string]string{"error": "Не удалось получить показатели мониторинга"})
+		return
+	}
+	incidents, err := handler.incidents.ListByService(request.Context(), service.ID)
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Не удалось получить инциденты"})
+		return
+	}
+	count, downtime := summarizeIncidents(incidents, from, now)
+	summary.IncidentCount, summary.DowntimeSeconds = count, downtime
+	if summary.TotalChecks > 0 {
+		summary.SuccessRate = float64(summary.SuccessfulChecks) * 100 / float64(summary.TotalChecks)
+	}
+	writeJSON(writer, http.StatusOK, summary)
+}
+
+func metricsPeriod(period string) (string, time.Duration, bool) {
+	if period == "" {
+		period = "24h"
+	}
+	durations := map[string]time.Duration{"24h": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30d": 30 * 24 * time.Hour}
+	duration, ok := durations[period]
+	return period, duration, ok
+}
+
+func summarizeIncidents(incidents []incident.Incident, from, now time.Time) (int, int64) {
+	count, downtime := 0, int64(0)
+	for _, item := range incidents {
+		end := now
+		if item.EndedAt != nil {
+			end = *item.EndedAt
+		}
+		if end.After(from) && item.StartedAt.Before(now) {
+			count++
+			start := item.StartedAt
+			if start.Before(from) {
+				start = from
+			}
+			if end.After(now) {
+				end = now
+			}
+			downtime += int64(end.Sub(start).Seconds())
+		}
+	}
+	return count, downtime
 }
 
 func (handler *handler) checkHistory(writer http.ResponseWriter, request *http.Request) {
@@ -109,21 +182,43 @@ func (handler *handler) checkHistory(writer http.ResponseWriter, request *http.R
 		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Некорректная пагинация"})
 		return
 	}
-	aggregateWindow := time.Duration(0)
+	from := time.Now().UTC().Add(-duration)
 	if chart {
-		switch period {
-		case "7d":
-			aggregateWindow = 15 * time.Minute
-		case "30d":
-			aggregateWindow = time.Hour
+		history, err := handler.checks.History(request.Context(), service.ID, from, 501, 0, 0)
+		if err != nil {
+			writeJSON(writer, http.StatusBadGateway, map[string]string{"error": "Не удалось получить историю проверок"})
+			return
 		}
+		if len(history.Checks) <= 500 {
+			writeJSON(writer, http.StatusOK, history)
+			return
+		}
+		aggregateWindow := chartAggregateWindow(period)
+		history, err = handler.checks.History(request.Context(), service.ID, from, 500, 0, aggregateWindow)
+		if err != nil {
+			writeJSON(writer, http.StatusBadGateway, map[string]string{"error": "Не удалось получить историю проверок"})
+			return
+		}
+		writeJSON(writer, http.StatusOK, history)
+		return
 	}
-	history, err := handler.checks.History(request.Context(), service.ID, time.Now().UTC().Add(-duration), limit, offset, aggregateWindow)
+	history, err := handler.checks.History(request.Context(), service.ID, from, limit, offset, 0)
 	if err != nil {
 		writeJSON(writer, http.StatusBadGateway, map[string]string{"error": "Не удалось получить историю проверок"})
 		return
 	}
 	writeJSON(writer, http.StatusOK, history)
+}
+
+func chartAggregateWindow(period string) time.Duration {
+	switch period {
+	case "7d":
+		return 30 * time.Minute
+	case "30d":
+		return 2 * time.Hour
+	default:
+		return 5 * time.Minute
+	}
 }
 
 func historyPage(query url.Values, maxLimit int) (int, int, bool) {

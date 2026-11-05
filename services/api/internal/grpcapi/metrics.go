@@ -61,3 +61,13 @@ func (client *MetricsClient) History(ctx context.Context, serviceID string, from
 	}
 	return monitoring.History{Checks: checks, Limit: limit, Offset: offset}, nil
 }
+
+func (client *MetricsClient) Summary(ctx context.Context, serviceID string, from time.Time) (monitoring.Summary, error) {
+	requestContext, cancel := context.WithTimeout(ctx, client.timeout)
+	defer cancel()
+	response, err := client.client.GetCheckSummary(requestContext, &metricsv1.GetCheckSummaryRequest{ServiceId: serviceID, From: timestamppb.New(from)})
+	if err != nil {
+		return monitoring.Summary{}, fmt.Errorf("request check summary: %w", err)
+	}
+	return monitoring.Summary{TotalChecks: response.TotalChecks, SuccessfulChecks: response.SuccessfulChecks, HasResponseMetrics: response.HasResponseMetrics, AverageResponseMS: response.AverageResponseMs, P95ResponseMS: response.P95ResponseMs}, nil
+}

@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	MetricsService_GetLatestCheck_FullMethodName  = "/monitoring.metrics.v1.MetricsService/GetLatestCheck"
 	MetricsService_GetCheckHistory_FullMethodName = "/monitoring.metrics.v1.MetricsService/GetCheckHistory"
+	MetricsService_GetCheckSummary_FullMethodName = "/monitoring.metrics.v1.MetricsService/GetCheckSummary"
 )
 
 // MetricsServiceClient is the client API for MetricsService service.
@@ -29,6 +30,7 @@ const (
 type MetricsServiceClient interface {
 	GetLatestCheck(ctx context.Context, in *GetLatestCheckRequest, opts ...grpc.CallOption) (*GetLatestCheckResponse, error)
 	GetCheckHistory(ctx context.Context, in *GetCheckHistoryRequest, opts ...grpc.CallOption) (*GetCheckHistoryResponse, error)
+	GetCheckSummary(ctx context.Context, in *GetCheckSummaryRequest, opts ...grpc.CallOption) (*GetCheckSummaryResponse, error)
 }
 
 type metricsServiceClient struct {
@@ -59,12 +61,23 @@ func (c *metricsServiceClient) GetCheckHistory(ctx context.Context, in *GetCheck
 	return out, nil
 }
 
+func (c *metricsServiceClient) GetCheckSummary(ctx context.Context, in *GetCheckSummaryRequest, opts ...grpc.CallOption) (*GetCheckSummaryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetCheckSummaryResponse)
+	err := c.cc.Invoke(ctx, MetricsService_GetCheckSummary_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MetricsServiceServer is the server API for MetricsService service.
 // All implementations must embed UnimplementedMetricsServiceServer
 // for forward compatibility.
 type MetricsServiceServer interface {
 	GetLatestCheck(context.Context, *GetLatestCheckRequest) (*GetLatestCheckResponse, error)
 	GetCheckHistory(context.Context, *GetCheckHistoryRequest) (*GetCheckHistoryResponse, error)
+	GetCheckSummary(context.Context, *GetCheckSummaryRequest) (*GetCheckSummaryResponse, error)
 	mustEmbedUnimplementedMetricsServiceServer()
 }
 
@@ -80,6 +93,9 @@ func (UnimplementedMetricsServiceServer) GetLatestCheck(context.Context, *GetLat
 }
 func (UnimplementedMetricsServiceServer) GetCheckHistory(context.Context, *GetCheckHistoryRequest) (*GetCheckHistoryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCheckHistory not implemented")
+}
+func (UnimplementedMetricsServiceServer) GetCheckSummary(context.Context, *GetCheckSummaryRequest) (*GetCheckSummaryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetCheckSummary not implemented")
 }
 func (UnimplementedMetricsServiceServer) mustEmbedUnimplementedMetricsServiceServer() {}
 func (UnimplementedMetricsServiceServer) testEmbeddedByValue()                        {}
@@ -138,6 +154,24 @@ func _MetricsService_GetCheckHistory_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MetricsService_GetCheckSummary_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCheckSummaryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MetricsServiceServer).GetCheckSummary(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MetricsService_GetCheckSummary_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MetricsServiceServer).GetCheckSummary(ctx, req.(*GetCheckSummaryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // MetricsService_ServiceDesc is the grpc.ServiceDesc for MetricsService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -152,6 +186,10 @@ var MetricsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetCheckHistory",
 			Handler:    _MetricsService_GetCheckHistory_Handler,
+		},
+		{
+			MethodName: "GetCheckSummary",
+			Handler:    _MetricsService_GetCheckSummary_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
