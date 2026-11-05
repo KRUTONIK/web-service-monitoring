@@ -169,11 +169,11 @@ func (stub *stubServiceRepository) ByIDAndOwner(_ context.Context, ownerID, serv
 	}
 	return stub.service, stub.err
 }
-func (stub *stubServiceRepository) Create(_ context.Context, ownerID, _, _ string, _ bool, _, _ int) (serviceconfig.Service, error) {
+func (stub *stubServiceRepository) Create(_ context.Context, ownerID, _, _ string, _ bool, _ bool, _, _ int) (serviceconfig.Service, error) {
 	stub.ownerID = ownerID
 	return stub.created, stub.err
 }
-func (stub *stubServiceRepository) Update(_ context.Context, ownerID, serviceID, _, _ string, _ bool, _, _ int) (serviceconfig.Service, error) {
+func (stub *stubServiceRepository) Update(_ context.Context, ownerID, serviceID, _, _ string, _ bool, _ bool, _, _ int) (serviceconfig.Service, error) {
 	stub.ownerID, stub.serviceID = ownerID, serviceID
 	return stub.updated, stub.err
 }
