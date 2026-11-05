@@ -57,6 +57,8 @@ services:
         condition: service_healthy
       scheduler:
         condition: service_started
+    deploy:
+      replicas: 2
 
   scheduler:
     build:
