@@ -132,14 +132,15 @@ type stubAuthentication struct {
 }
 
 type stubServiceRepository struct {
-	services  []serviceconfig.Service
-	service   serviceconfig.Service
-	err       error
-	created   serviceconfig.Service
-	updated   serviceconfig.Service
-	deleted   serviceconfig.Service
-	ownerID   string
-	serviceID string
+	services             []serviceconfig.Service
+	service              serviceconfig.Service
+	err                  error
+	created              serviceconfig.Service
+	updated              serviceconfig.Service
+	deleted              serviceconfig.Service
+	ownerID              string
+	serviceID            string
+	notificationsEnabled bool
 }
 
 func (stub *stubServiceRepository) ListByOwner(_ context.Context, ownerID string) ([]serviceconfig.Service, error) {
@@ -173,8 +174,9 @@ func (stub *stubServiceRepository) Create(_ context.Context, ownerID, _, _ strin
 	stub.ownerID = ownerID
 	return stub.created, stub.err
 }
-func (stub *stubServiceRepository) Update(_ context.Context, ownerID, serviceID, _, _ string, _ bool, _ bool, _, _ int) (serviceconfig.Service, error) {
+func (stub *stubServiceRepository) Update(_ context.Context, ownerID, serviceID, _, _ string, _ bool, notificationsEnabled bool, _, _ int) (serviceconfig.Service, error) {
 	stub.ownerID, stub.serviceID = ownerID, serviceID
+	stub.notificationsEnabled = notificationsEnabled
 	return stub.updated, stub.err
 }
 func (stub *stubServiceRepository) Delete(_ context.Context, ownerID, serviceID string) (serviceconfig.Service, error) {
@@ -469,6 +471,38 @@ func TestNotificationsEnabledKeepsExistingValueWhenOmitted(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			if got := (serviceInput{NotificationsEnabled: test.input}).notificationsEnabledOr(test.fallback); got != test.want {
 				t.Fatalf("notifications enabled = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
+func TestUpdateServicePassesNotificationsEnabledToRepository(t *testing.T) {
+	for _, test := range []struct {
+		name               string
+		body               string
+		currentValue       bool
+		expectedRepository bool
+	}{
+		{name: "omitted preserves current value", body: `{"name":"Service","url":"https://service.test","enabled":true,"interval_seconds":60,"timeout_seconds":5}`, currentValue: true, expectedRepository: true},
+		{name: "explicit true enables notifications", body: `{"name":"Service","url":"https://service.test","enabled":true,"notifications_enabled":true,"interval_seconds":60,"timeout_seconds":5}`, currentValue: false, expectedRepository: true},
+		{name: "explicit false disables notifications", body: `{"name":"Service","url":"https://service.test","enabled":true,"notifications_enabled":false,"interval_seconds":60,"timeout_seconds":5}`, currentValue: true, expectedRepository: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+			handler, sessions, services, _ := newTestHandler(&stubCheckReader{}, authentication)
+			services.service = serviceconfig.Service{ID: "service-1", NotificationsEnabled: test.currentValue}
+			services.updated = serviceconfig.Service{ID: "service-1", NotificationsEnabled: test.expectedRepository}
+			request := httptest.NewRequest(http.MethodPut, "/api/services/service-1", strings.NewReader(test.body))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Origin", testOrigin)
+			request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("update response=%d body=%s", response.Code, response.Body.String())
+			}
+			if services.ownerID != "user-1" || services.serviceID != "service-1" || services.notificationsEnabled != test.expectedRepository {
+				t.Fatalf("repository call owner=%q service=%q notifications=%t", services.ownerID, services.serviceID, services.notificationsEnabled)
 			}
 		})
 	}
