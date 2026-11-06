@@ -417,6 +417,63 @@ func TestLoginRejectsInvalidCredentials(t *testing.T) {
 	}
 }
 
+func TestLoginSessionLifecycle(t *testing.T) {
+	authentication := &stubAuthentication{loginUser: user.User{ID: "user-1", Email: "owner@example.test"}, users: map[string]user.User{"user-1": {ID: "user-1", Email: "owner@example.test"}}}
+	handler, _, _, _ := newTestHandler(&stubCheckReader{}, authentication)
+	login := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"email":"owner@example.test","password":"correct-horse"}`))
+	login.Header.Set("Content-Type", "application/json")
+	login.Header.Set("Origin", testOrigin)
+	loginResponse := httptest.NewRecorder()
+	handler.ServeHTTP(loginResponse, login)
+	if loginResponse.Code != http.StatusOK || len(loginResponse.Result().Cookies()) != 1 {
+		t.Fatalf("login response=%d cookies=%d", loginResponse.Code, len(loginResponse.Result().Cookies()))
+	}
+	cookie := loginResponse.Result().Cookies()[0]
+	me := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	me.AddCookie(cookie)
+	meResponse := httptest.NewRecorder()
+	handler.ServeHTTP(meResponse, me)
+	if meResponse.Code != http.StatusOK || !strings.Contains(meResponse.Body.String(), "owner@example.test") {
+		t.Fatalf("me response=%d body=%s", meResponse.Code, meResponse.Body.String())
+	}
+	logout := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	logout.Header.Set("Origin", testOrigin)
+	logout.AddCookie(cookie)
+	logoutResponse := httptest.NewRecorder()
+	handler.ServeHTTP(logoutResponse, logout)
+	if logoutResponse.Code != http.StatusOK {
+		t.Fatalf("logout response=%d", logoutResponse.Code)
+	}
+	meAfterLogout := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	meAfterLogout.AddCookie(cookie)
+	meAfterLogoutResponse := httptest.NewRecorder()
+	handler.ServeHTTP(meAfterLogoutResponse, meAfterLogout)
+	if meAfterLogoutResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("me after logout response=%d", meAfterLogoutResponse.Code)
+	}
+}
+
+func TestNotificationsEnabledKeepsExistingValueWhenOmitted(t *testing.T) {
+	falseValue, trueValue := false, true
+	for _, test := range []struct {
+		name     string
+		input    *bool
+		fallback bool
+		want     bool
+	}{
+		{"omitted true", nil, true, true},
+		{"omitted false", nil, false, false},
+		{"explicit enable", &trueValue, false, true},
+		{"explicit disable", &falseValue, true, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := (serviceInput{NotificationsEnabled: test.input}).notificationsEnabledOr(test.fallback); got != test.want {
+				t.Fatalf("notifications enabled = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
 func TestMutatingRequestRejectsForeignOrigin(t *testing.T) {
 	handler, _, _, _ := newTestHandler(&stubCheckReader{}, &stubAuthentication{})
 	request := httptest.NewRequest(http.MethodPost, "/api/auth/register", bytes.NewBufferString(`{}`))
