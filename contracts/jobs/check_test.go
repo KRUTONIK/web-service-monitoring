@@ -24,3 +24,24 @@ func TestNewCheckJobChangesIDForAnotherSchedule(t *testing.T) {
 		t.Fatal("different scheduled checks must have different IDs")
 	}
 }
+
+func TestIDChangesOnlyWhenItsIdentityInputsChange(t *testing.T) {
+	at := time.Date(2026, time.November, 5, 12, 0, 0, 0, time.UTC)
+	base := ID("service-1", "https://service.test", at)
+	for _, test := range []struct {
+		name string
+		id   string
+		url  string
+		at   time.Time
+	}{
+		{name: "different service", id: "service-2", url: "https://service.test", at: at},
+		{name: "different URL", id: "service-1", url: "https://other.test", at: at},
+		{name: "different time", id: "service-1", url: "https://service.test", at: at.Add(time.Nanosecond)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := ID(test.id, test.url, test.at); got == base {
+				t.Fatal("changed job identity input produced the same ID")
+			}
+		})
+	}
+}

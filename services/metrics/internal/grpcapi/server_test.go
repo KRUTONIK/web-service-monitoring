@@ -16,6 +16,8 @@ import (
 
 type stubReader struct {
 	result           metric.Result
+	latestMany       []metric.Result
+	summary          metric.Summary
 	history          []metric.Result
 	requestedService string
 	from             time.Time
@@ -30,6 +32,9 @@ func (stub *stubReader) Latest(_ context.Context, serviceID string) (metric.Resu
 }
 
 func (stub *stubReader) LatestMany(_ context.Context, _ []string) ([]metric.Result, error) {
+	if stub.latestMany != nil {
+		return stub.latestMany, stub.err
+	}
 	if stub.result.ServiceID == "" {
 		return nil, stub.err
 	}
@@ -42,7 +47,7 @@ func (stub *stubReader) History(_ context.Context, serviceID string, from time.T
 }
 
 func (stub *stubReader) Summary(_ context.Context, _ string, _ time.Time) (metric.Summary, error) {
-	return metric.Summary{}, stub.err
+	return stub.summary, stub.err
 }
 
 func TestGetLatestCheckReturnsNotFound(t *testing.T) {
@@ -91,5 +96,51 @@ func TestGetCheckHistoryRejectsInvalidRequest(t *testing.T) {
 	_, err := New(&stubReader{}).GetCheckHistory(context.Background(), &metricsv1.GetCheckHistoryRequest{ServiceId: "service-1"})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("unexpected status code: %s", status.Code(err))
+	}
+}
+
+func TestGetLatestChecks(t *testing.T) {
+	checkedAt := time.Date(2026, time.November, 5, 12, 0, 0, 0, time.UTC)
+	reader := &stubReader{latestMany: []metric.Result{
+		{ServiceID: "one", ServiceURL: "https://one.test", CheckedAt: checkedAt, Available: true, StatusCode: 299, ResponseTimeMS: 12},
+		{ServiceID: "two", ServiceURL: "https://two.test", CheckedAt: checkedAt.Add(time.Second), Available: false, StatusCode: 503, Error: "unavailable"},
+	}}
+	response, err := New(reader).GetLatestChecks(context.Background(), &metricsv1.GetLatestChecksRequest{ServiceIds: []string{"one", "two"}})
+	if err != nil || len(response.Checks) != 2 {
+		t.Fatalf("response = %+v, error = %v", response, err)
+	}
+	first, second := response.Checks[0], response.Checks[1]
+	if first.ServiceId != "one" || first.StatusCode != 299 || first.ResponseTimeMs != 12 || !first.CheckedAt.AsTime().Equal(checkedAt) || second.Error != "unavailable" || second.Available {
+		t.Fatalf("checks = %+v", response.Checks)
+	}
+}
+
+func TestGetLatestChecksEmptyAndError(t *testing.T) {
+	server := New(&stubReader{err: errors.New("InfluxDB unavailable")})
+	response, err := server.GetLatestChecks(context.Background(), &metricsv1.GetLatestChecksRequest{})
+	if err != nil || len(response.Checks) != 0 {
+		t.Fatalf("empty response = %+v, error = %v", response, err)
+	}
+	_, err = server.GetLatestChecks(context.Background(), &metricsv1.GetLatestChecksRequest{ServiceIds: []string{"one"}})
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("error status = %s", status.Code(err))
+	}
+}
+
+func TestGetCheckSummary(t *testing.T) {
+	from := time.Date(2026, time.November, 1, 0, 0, 0, 0, time.UTC)
+	reader := &stubReader{summary: metric.Summary{TotalChecks: 10, SuccessfulChecks: 8, HasResponseMetrics: true, AverageResponseMS: 25.5, P95ResponseMS: 80}}
+	response, err := New(reader).GetCheckSummary(context.Background(), &metricsv1.GetCheckSummaryRequest{ServiceId: "service-1", From: timestamppb.New(from)})
+	if err != nil || response.TotalChecks != 10 || response.SuccessfulChecks != 8 || !response.HasResponseMetrics || response.AverageResponseMs != 25.5 || response.P95ResponseMs != 80 {
+		t.Fatalf("response = %+v, error = %v", response, err)
+	}
+	_, err = New(reader).GetCheckSummary(context.Background(), &metricsv1.GetCheckSummaryRequest{ServiceId: "service-1"})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("invalid summary status = %s", status.Code(err))
+	}
+	reader.err = errors.New("InfluxDB unavailable")
+	_, err = New(reader).GetCheckSummary(context.Background(), &metricsv1.GetCheckSummaryRequest{ServiceId: "service-1", From: timestamppb.New(from)})
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("summary error status = %s", status.Code(err))
 	}
 }
