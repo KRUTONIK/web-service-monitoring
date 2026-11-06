@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -168,6 +169,36 @@ func TestScheduleRetriesAJobAfterPublicationFailure(t *testing.T) {
 	}
 	if publisher.calls != 2 || len(publisher.services) != 1 || publisher.services[0].ScheduledAt != now {
 		t.Fatalf("retry did not preserve the original job: calls=%d services=%+v", publisher.calls, publisher.services)
+	}
+}
+
+func TestScheduleNormalizesNonPositiveIntervals(t *testing.T) {
+	for _, intervalSeconds := range []int{0, -5} {
+		t.Run(fmt.Sprintf("interval=%d", intervalSeconds), func(t *testing.T) {
+			state := serviceconfig.NewState()
+			state.Replace(serviceconfig.Snapshot{Services: []serviceconfig.Service{{ID: "service-1", URL: "https://service.test", Enabled: true, IntervalSeconds: intervalSeconds}}})
+			publisher := &stubPublisher{}
+			scheduler := New(state, publisher)
+			start := time.Date(2026, time.November, 2, 12, 0, 0, 0, time.UTC)
+
+			for _, now := range []time.Time{start, start.Add(59 * time.Second), start.Add(time.Minute)} {
+				if err := scheduler.scheduleAt(context.Background(), now); err != nil {
+					t.Fatalf("schedule at %s: %v", now, err)
+				}
+			}
+			if publisher.calls != 2 {
+				t.Fatalf("publications = %d, want initial and one after a minute", publisher.calls)
+			}
+			want := []time.Time{start, start.Add(time.Minute)}
+			if len(publisher.scheduled) != len(want) {
+				t.Fatalf("scheduled jobs = %v", publisher.scheduled)
+			}
+			for index := range want {
+				if publisher.scheduled[index] != want[index] {
+					t.Fatalf("job %d scheduled at %s, want %s", index, publisher.scheduled[index], want[index])
+				}
+			}
+		})
 	}
 }
 
