@@ -153,6 +153,24 @@ func TestScheduleReturnsPublisherError(t *testing.T) {
 	}
 }
 
+func TestScheduleRetriesAJobAfterPublicationFailure(t *testing.T) {
+	state := serviceconfig.NewState()
+	state.Replace(serviceconfig.Snapshot{Services: []serviceconfig.Service{{ID: "service-1", URL: "https://service.test", Enabled: true, IntervalSeconds: 10}}})
+	publisher := &stubPublisher{err: errors.New("broker unavailable")}
+	scheduler := New(state, publisher)
+	now := time.Date(2026, time.November, 2, 12, 0, 0, 0, time.UTC)
+	if err := scheduler.scheduleAt(context.Background(), now); err == nil {
+		t.Fatal("expected publication failure")
+	}
+	publisher.err = nil
+	if err := scheduler.scheduleAt(context.Background(), now); err != nil {
+		t.Fatalf("retry schedule: %v", err)
+	}
+	if publisher.calls != 2 || len(publisher.services) != 1 || publisher.services[0].ScheduledAt != now {
+		t.Fatalf("retry did not preserve the original job: calls=%d services=%+v", publisher.calls, publisher.services)
+	}
+}
+
 func TestSchedulePublishesEnabledServices(t *testing.T) {
 	state := serviceconfig.NewState()
 	state.Replace(serviceconfig.Snapshot{Services: []serviceconfig.Service{

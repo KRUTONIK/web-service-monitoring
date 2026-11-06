@@ -2,6 +2,8 @@ package check
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +11,12 @@ import (
 	"testing"
 	"time"
 )
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
 
 func TestRunAvailable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
@@ -145,5 +153,40 @@ func TestRunRejectsMissingServiceID(t *testing.T) {
 	}
 	if result.Error != ErrMissingServiceID.Error() {
 		t.Fatalf("expected missing service ID error, got %q", result.Error)
+	}
+}
+
+func TestRunTreatsOnly2xxResponsesAsAvailable(t *testing.T) {
+	for _, test := range []struct {
+		status    int
+		available bool
+	}{
+		{status: 299, available: true},
+		{status: 300, available: false},
+	} {
+		t.Run(http.StatusText(test.status), func(t *testing.T) {
+			client := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: test.status, Body: io.NopCloser(strings.NewReader(""))}, nil
+			})}
+			result := New(client).Run(context.Background(), "service-1", "https://service.test", time.Second)
+			if result.Available != test.available || result.StatusCode != test.status || result.Error != "" {
+				t.Fatalf("result = %+v", result)
+			}
+		})
+	}
+}
+
+func TestRunPropagatesCancelledContextWithoutFalseSuccess(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client := &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		if !errors.Is(request.Context().Err(), context.Canceled) {
+			t.Fatalf("request context = %v, want canceled", request.Context().Err())
+		}
+		return nil, request.Context().Err()
+	})}
+	result := New(client).Run(ctx, "service-1", "https://service.test", time.Second)
+	if result.Available || result.StatusCode != 0 || !strings.Contains(result.Error, context.Canceled.Error()) {
+		t.Fatalf("result = %+v", result)
 	}
 }
