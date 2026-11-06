@@ -22,6 +22,28 @@ func TestDeliveryAttemptUsesRetryCount(t *testing.T) {
 	}
 }
 
+func TestDeliveryAttemptAcceptsSupportedHeaderTypes(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value any
+		want  int
+	}{
+		{"int", int(2), 3},
+		{"int32", int32(2), 3},
+		{"int64", int64(2), 3},
+		{"uint32", uint32(2), 3},
+		{"uint64", uint64(2), 3},
+		{"string", "2", 3},
+		{"invalid", "not-a-number", 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := deliveryAttempt(amqp.Table{"x-retry-count": test.value}); got != test.want {
+				t.Fatalf("attempt = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
 func TestPermanentErrorCanBeClassified(t *testing.T) {
 	original := errors.New("invalid job")
 	var permanent *PermanentError
