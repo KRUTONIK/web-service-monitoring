@@ -26,12 +26,12 @@ func startSMTPServer(t *testing.T, rejectRecipient bool) (string, <-chan receive
 	received := make(chan receivedMail, 1)
 	go func() {
 		defer close(received)
-		defer listener.Close()
+		defer func() { _ = listener.Close() }()
 		connection, err := listener.Accept()
 		if err != nil {
 			return
 		}
-		defer connection.Close()
+		defer func() { _ = connection.Close() }()
 		reader := bufio.NewReader(connection)
 		_, _ = fmt.Fprint(connection, "220 test SMTP\r\n")
 		var mail receivedMail
