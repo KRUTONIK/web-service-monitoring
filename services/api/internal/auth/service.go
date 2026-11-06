@@ -13,7 +13,13 @@ import (
 var ErrInvalidCredentials = errors.New("invalid credentials")
 var ErrEmailTaken = errors.New("email already registered")
 
-type Service struct{ users *user.Repository }
+type userRepository interface {
+	Create(context.Context, user.User) (user.User, error)
+	ByEmail(context.Context, string) (user.User, error)
+	ByID(context.Context, string) (user.User, error)
+}
+
+type Service struct{ users userRepository }
 
 func New(users *user.Repository) *Service { return &Service{users: users} }
 
