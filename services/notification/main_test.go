@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/KRUTONIK/web-service-monitoring/contracts/notifications"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -115,6 +116,29 @@ func TestTruncatePreservesShortValues(t *testing.T) {
 	}
 	if got := truncate("abcdef", 3); got != "abc…" {
 		t.Fatalf("truncate = %q", got)
+	}
+}
+
+func TestTruncateDoesNotSplitUTF8Characters(t *testing.T) {
+	tests := []struct {
+		name, value string
+		limit       int
+		want        string
+	}{
+		{name: "ASCII", value: "abcdef", limit: 3, want: "abc…"},
+		{name: "Cyrillic", value: "ошибка", limit: 4, want: "ош…"},
+		{name: "inside multibyte character", value: "аб", limit: 3, want: "а…"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := truncate(test.value, test.limit)
+			if got != test.want {
+				t.Fatalf("truncate(%q, %d) = %q, want %q", test.value, test.limit, got, test.want)
+			}
+			if !utf8.ValidString(got) {
+				t.Fatalf("truncate(%q, %d) returned invalid UTF-8: %q", test.value, test.limit, got)
+			}
+		})
 	}
 }
 
