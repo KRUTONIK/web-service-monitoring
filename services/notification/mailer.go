@@ -10,6 +10,7 @@ import (
 	"net/smtp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/KRUTONIK/web-service-monitoring/contracts/notifications"
 )
@@ -107,6 +108,9 @@ func Compose(event notifications.Event, webURL string) (string, string) {
 func truncate(value string, limit int) string {
 	if len(value) <= limit {
 		return value
+	}
+	for limit > 0 && !utf8.ValidString(value[:limit]) {
+		limit--
 	}
 	return value[:limit] + "…"
 }

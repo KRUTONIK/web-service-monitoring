@@ -132,14 +132,15 @@ type stubAuthentication struct {
 }
 
 type stubServiceRepository struct {
-	services  []serviceconfig.Service
-	service   serviceconfig.Service
-	err       error
-	created   serviceconfig.Service
-	updated   serviceconfig.Service
-	deleted   serviceconfig.Service
-	ownerID   string
-	serviceID string
+	services             []serviceconfig.Service
+	service              serviceconfig.Service
+	err                  error
+	created              serviceconfig.Service
+	updated              serviceconfig.Service
+	deleted              serviceconfig.Service
+	ownerID              string
+	serviceID            string
+	notificationsEnabled bool
 }
 
 func (stub *stubServiceRepository) ListByOwner(_ context.Context, ownerID string) ([]serviceconfig.Service, error) {
@@ -173,8 +174,9 @@ func (stub *stubServiceRepository) Create(_ context.Context, ownerID, _, _ strin
 	stub.ownerID = ownerID
 	return stub.created, stub.err
 }
-func (stub *stubServiceRepository) Update(_ context.Context, ownerID, serviceID, _, _ string, _ bool, _ bool, _, _ int) (serviceconfig.Service, error) {
+func (stub *stubServiceRepository) Update(_ context.Context, ownerID, serviceID, _, _ string, _ bool, notificationsEnabled bool, _, _ int) (serviceconfig.Service, error) {
 	stub.ownerID, stub.serviceID = ownerID, serviceID
+	stub.notificationsEnabled = notificationsEnabled
 	return stub.updated, stub.err
 }
 func (stub *stubServiceRepository) Delete(_ context.Context, ownerID, serviceID string) (serviceconfig.Service, error) {
@@ -414,6 +416,95 @@ func TestLoginRejectsInvalidCredentials(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("unexpected status: %d", response.Code)
+	}
+}
+
+func TestLoginSessionLifecycle(t *testing.T) {
+	authentication := &stubAuthentication{loginUser: user.User{ID: "user-1", Email: "owner@example.test"}, users: map[string]user.User{"user-1": {ID: "user-1", Email: "owner@example.test"}}}
+	handler, _, _, _ := newTestHandler(&stubCheckReader{}, authentication)
+	login := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"email":"owner@example.test","password":"correct-horse"}`))
+	login.Header.Set("Content-Type", "application/json")
+	login.Header.Set("Origin", testOrigin)
+	loginResponse := httptest.NewRecorder()
+	handler.ServeHTTP(loginResponse, login)
+	if loginResponse.Code != http.StatusOK || len(loginResponse.Result().Cookies()) != 1 {
+		t.Fatalf("login response=%d cookies=%d", loginResponse.Code, len(loginResponse.Result().Cookies()))
+	}
+	cookie := loginResponse.Result().Cookies()[0]
+	me := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	me.AddCookie(cookie)
+	meResponse := httptest.NewRecorder()
+	handler.ServeHTTP(meResponse, me)
+	if meResponse.Code != http.StatusOK || !strings.Contains(meResponse.Body.String(), "owner@example.test") {
+		t.Fatalf("me response=%d body=%s", meResponse.Code, meResponse.Body.String())
+	}
+	logout := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	logout.Header.Set("Origin", testOrigin)
+	logout.AddCookie(cookie)
+	logoutResponse := httptest.NewRecorder()
+	handler.ServeHTTP(logoutResponse, logout)
+	if logoutResponse.Code != http.StatusOK {
+		t.Fatalf("logout response=%d", logoutResponse.Code)
+	}
+	meAfterLogout := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	meAfterLogout.AddCookie(cookie)
+	meAfterLogoutResponse := httptest.NewRecorder()
+	handler.ServeHTTP(meAfterLogoutResponse, meAfterLogout)
+	if meAfterLogoutResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("me after logout response=%d", meAfterLogoutResponse.Code)
+	}
+}
+
+func TestNotificationsEnabledKeepsExistingValueWhenOmitted(t *testing.T) {
+	falseValue, trueValue := false, true
+	for _, test := range []struct {
+		name     string
+		input    *bool
+		fallback bool
+		want     bool
+	}{
+		{"omitted true", nil, true, true},
+		{"omitted false", nil, false, false},
+		{"explicit enable", &trueValue, false, true},
+		{"explicit disable", &falseValue, true, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := (serviceInput{NotificationsEnabled: test.input}).notificationsEnabledOr(test.fallback); got != test.want {
+				t.Fatalf("notifications enabled = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
+func TestUpdateServicePassesNotificationsEnabledToRepository(t *testing.T) {
+	for _, test := range []struct {
+		name               string
+		body               string
+		currentValue       bool
+		expectedRepository bool
+	}{
+		{name: "omitted preserves current value", body: `{"name":"Service","url":"https://service.test","enabled":true,"interval_seconds":60,"timeout_seconds":5}`, currentValue: true, expectedRepository: true},
+		{name: "explicit true enables notifications", body: `{"name":"Service","url":"https://service.test","enabled":true,"notifications_enabled":true,"interval_seconds":60,"timeout_seconds":5}`, currentValue: false, expectedRepository: true},
+		{name: "explicit false disables notifications", body: `{"name":"Service","url":"https://service.test","enabled":true,"notifications_enabled":false,"interval_seconds":60,"timeout_seconds":5}`, currentValue: true, expectedRepository: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			authentication := &stubAuthentication{users: map[string]user.User{"user-1": {ID: "user-1"}}}
+			handler, sessions, services, _ := newTestHandler(&stubCheckReader{}, authentication)
+			services.service = serviceconfig.Service{ID: "service-1", NotificationsEnabled: test.currentValue}
+			services.updated = serviceconfig.Service{ID: "service-1", NotificationsEnabled: test.expectedRepository}
+			request := httptest.NewRequest(http.MethodPut, "/api/services/service-1", strings.NewReader(test.body))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Origin", testOrigin)
+			request.AddCookie(authenticatedCookie(t, sessions, "user-1"))
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("update response=%d body=%s", response.Code, response.Body.String())
+			}
+			if services.ownerID != "user-1" || services.serviceID != "service-1" || services.notificationsEnabled != test.expectedRepository {
+				t.Fatalf("repository call owner=%q service=%q notifications=%t", services.ownerID, services.serviceID, services.notificationsEnabled)
+			}
+		})
 	}
 }
 

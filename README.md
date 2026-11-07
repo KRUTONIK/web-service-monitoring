@@ -1,7 +1,7 @@
 # Мониторинг веб-сервисов
 
 Микросервисная система для пользовательского мониторинга доступности и времени
-ответа веб-сервисов. Текущая версия — `v0.5.0`.
+ответа веб-сервисов. Текущая версия — `v1.0.0`.
 
 ## Возможности
 
@@ -111,6 +111,7 @@ bash scripts/prototype-test.sh
 bash scripts/monitoring-core-test.sh
 bash scripts/incident-redelivery-test.sh
 bash scripts/incident-queue-compatibility-test.sh
+bash scripts/notification-integration-test.sh
 ```
 
 Web-проверки запускаются из каталога `web`:
