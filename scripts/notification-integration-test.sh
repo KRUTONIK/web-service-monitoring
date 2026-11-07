@@ -66,6 +66,12 @@ mail_subject_count_is() {
   node -e 'const messages = JSON.parse(process.argv[1]).messages || []; process.exit(messages.filter(message => message.Subject === process.argv[2]).length === Number(process.argv[3]) ? 0 : 1)' "$messages" "$subject" "$expected"
 }
 
+mail_recipient_count_is() {
+  local recipient=$1 expected=$2 messages
+  messages=$(curl -fsS "${MAILPIT_URL}/api/v1/messages") || return 1
+  node -e 'const messages = JSON.parse(process.argv[1]).messages || []; process.exit(messages.filter(message => (message.To || []).some(item => item.Address === process.argv[2])).length === Number(process.argv[3]) ? 0 : 1)' "$messages" "$recipient" "$expected"
+}
+
 recovery_duration_is() {
   local expected=$1 messages message_id body
   messages=$(curl -fsS "${MAILPIT_URL}/api/v1/messages") || return 1
@@ -201,7 +207,7 @@ wait_for 'message in retry queue' queue_has_message notifications.events.retry
 "${COMPOSE[@]}" start mailpit >/dev/null
 wait_for 'Mailpit after retry' curl -fsS "${MAILPIT_URL}/api/v1/messages"
 wait_for 'sent retry delivery' delivery_is_sent notification-retry
-wait_for 'one recovered retry email' mail_subject_count_is "$retry_subject" 2
+wait_for 'one recovered retry email' mail_recipient_count_is retry@example.test 1
 
 # G. A persistent SMTP outage exhausts retries and routes the event to DLQ.
 "${COMPOSE[@]}" stop mailpit >/dev/null
@@ -210,5 +216,5 @@ wait_for 'failed DLQ delivery' delivery_is_failed notification-dlq
 wait_for 'message in notification DLQ' queue_has_message notifications.events.dlq
 "${COMPOSE[@]}" start mailpit >/dev/null
 wait_for 'Mailpit after DLQ' curl -fsS "${MAILPIT_URL}/api/v1/messages"
-mail_subject_count_is "$retry_subject" 2
+mail_recipient_count_is dlq@example.test 0
 echo 'Notification integration test passed.'
