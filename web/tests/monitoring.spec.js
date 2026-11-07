@@ -113,6 +113,22 @@ test('регистрирует пользователя и открывает п
   await expect(page.getByText('Сервисов пока нет. Добавьте первый сервис для мониторинга.')).toBeVisible()
 })
 
+test('выполняет вход и показывает ошибку неверных учётных данных', async ({ page }) => {
+  await mockUnauthenticated(page)
+  await page.route('**/api/auth/login', (route) => route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'Неверный email или пароль' }) }))
+  await page.goto('/')
+  await page.getByLabel('Электронная почта').fill(user.email)
+  await page.getByLabel('Пароль').fill('wrong-password')
+  await page.getByRole('button', { name: 'Войти' }).click()
+  await expect(page.getByText('Неверный email или пароль')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Войти' })).toBeVisible()
+  await page.unroute('**/api/auth/login')
+  await page.route('**/api/auth/login', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(user) }))
+  await mockDashboard(page)
+  await page.getByRole('button', { name: 'Войти' }).click()
+  await expect(page.getByRole('button', { name: 'Добавить сервис' })).toBeVisible()
+})
+
 test('показывает сервис и актуальное состояние', async ({ page }) => {
   await mockDashboard(page)
   await page.goto('/')
@@ -425,6 +441,78 @@ test('изменяет сервис', async ({ page }) => {
   await page.getByRole('button', { name: 'Сохранить' }).click()
   await expect(page.getByRole('heading', { name: updated.name })).toBeVisible()
   await expect(page.getByRole('heading', { name: updated.name }).locator('..').getByText(updated.url, { exact: true })).toBeVisible()
+})
+
+test('сохраняет настройку уведомлений без отключения мониторинга', async ({ page }) => {
+  const values = []
+  await mockDashboard(page, { services: [{ ...service, notifications_enabled: false }] })
+  await page.route('**/api/services/service-1', (route) => {
+    if (route.request().method() === 'GET') return route.fallback()
+    values.push(route.request().postDataJSON())
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...service, ...values.at(-1) }) })
+  })
+  await page.goto('/')
+  await openService(page)
+  await page.getByRole('button', { name: 'Изменить' }).click()
+  await page.getByLabel('Уведомлять о сбоях и восстановлении').check()
+  await page.getByRole('button', { name: 'Сохранить' }).click()
+  await expect.poll(() => values.length).toBe(1)
+  expect(values[0]).toMatchObject({ notifications_enabled: true, enabled: true })
+  await page.getByRole('button', { name: 'Изменить' }).click()
+  await expect(page.getByLabel('Уведомлять о сбоях и восстановлении')).toBeChecked()
+  await page.getByLabel('Уведомлять о сбоях и восстановлении').uncheck()
+  await page.getByRole('button', { name: 'Сохранить' }).click()
+  await expect.poll(() => values.length).toBe(2)
+  expect(values[1]).toMatchObject({ notifications_enabled: false, enabled: true })
+})
+
+test('сохраняет форму создания доступной при ошибке API', async ({ page }) => {
+  await mockDashboard(page, { services: [] })
+  await page.route('**/api/services', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Не удалось сохранить сервис' }) }))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Добавить сервис' }).click()
+  await page.getByLabel('Название').fill('Новый сервис')
+  await page.getByLabel('URL').fill('new.example')
+  await page.getByRole('button', { name: 'Добавить', exact: true }).click()
+  await expect(page.getByText('Не удалось сохранить сервис')).toBeVisible()
+  await expect(page.getByLabel('Название')).toHaveValue('Новый сервис')
+})
+
+test('сохраняет форму редактирования и карточку при ошибке API', async ({ page }) => {
+  let attempts = 0
+  await mockDashboard(page)
+  await page.route('**/api/services/service-1', (route) => {
+    if (route.request().method() === 'GET') return route.fallback()
+    attempts += 1
+    return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Не удалось изменить сервис' }) })
+  })
+  await page.goto('/')
+  await openService(page)
+  await page.getByRole('button', { name: 'Изменить' }).click()
+  await page.getByLabel('Название').fill('Новое название')
+  await page.getByLabel('URL').fill('changed.example')
+  await page.getByRole('button', { name: 'Сохранить' }).click()
+  await expect(page.getByText('Не удалось изменить сервис')).toBeVisible()
+  await expect(page.getByLabel('Название')).toHaveValue('Новое название')
+  await expect(page.getByLabel('URL')).toHaveValue('changed.example')
+  await expect(page.getByRole('heading', { name: service.name })).toBeVisible()
+  await expect(page.getByText(service.url, { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Сохранить' }).click()
+  await expect.poll(() => attempts).toBe(2)
+})
+
+test('не скрывает сервис и позволяет повторить удаление после ошибки', async ({ page }) => {
+  let attempts = 0
+  await mockDashboard(page)
+  await page.route('**/api/services/service-1', (route) => { if (route.request().method() === 'GET') return route.fallback(); attempts += 1; return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Не удалось удалить сервис' }) }) })
+  await page.goto('/')
+  await openService(page)
+  page.on('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: 'Удалить' }).click()
+  await expect(page.getByText('Не удалось удалить сервис')).toBeVisible()
+  await expect(page.getByRole('heading', { name: service.name })).toBeVisible()
+  await page.getByRole('button', { name: 'Удалить' }).click()
+  await expect.poll(() => attempts).toBe(2)
 })
 
 test('удаляет сервис из списка', async ({ page }) => {
