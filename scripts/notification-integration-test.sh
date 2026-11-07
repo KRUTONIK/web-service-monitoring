@@ -101,6 +101,20 @@ queue_has_message() {
   node -e 'process.exit(Number(JSON.parse(process.argv[1]).messages) > 0 ? 0 : 1)' "$queue"
 }
 
+mailpit_smtp_ready() {
+  "${COMPOSE[@]}" exec -T notification sh -c 'nc -z mailpit 1025'
+}
+
+observe_dlq_is_unchanged() {
+  local event_id=$1
+  for _ in $(seq 1 8); do
+    mail_recipient_count_is dlq@example.test 0 || fail "DLQ event ${event_id} was unexpectedly delivered"
+    queue_has_message notifications.events.dlq || fail "DLQ event ${event_id} disappeared from notifications.events.dlq"
+    sleep 1
+  done
+  delivery_is_failed "$event_id" || fail "DLQ delivery ${event_id} no longer has failed status"
+}
+
 seed_notification_service() {
   "${COMPOSE[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U monitoring -d monitoring <<'SQL'
 INSERT INTO users (id, email, password_hash)
@@ -216,5 +230,6 @@ wait_for 'failed DLQ delivery' delivery_is_failed notification-dlq
 wait_for 'message in notification DLQ' queue_has_message notifications.events.dlq
 "${COMPOSE[@]}" start mailpit >/dev/null
 wait_for 'Mailpit after DLQ' curl -fsS "${MAILPIT_URL}/api/v1/messages"
-mail_recipient_count_is dlq@example.test 0
+wait_for 'Mailpit SMTP after DLQ' mailpit_smtp_ready
+observe_dlq_is_unchanged notification-dlq
 echo 'Notification integration test passed.'
