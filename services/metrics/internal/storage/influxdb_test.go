@@ -11,6 +11,12 @@ import (
 	"time"
 )
 
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
 func TestLatest(t *testing.T) {
 	var receivedQuery string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -112,6 +118,33 @@ func TestParseResultsRejectsDataWithoutRequiredColumn(t *testing.T) {
 	_, err := parseResults(strings.NewReader(",result,table,_time,service_id,available,status_code,response_time_ms\n,,0,2026-11-05T10:00:00Z,service-a,true,200,15\n"))
 	if err == nil || !strings.Contains(err.Error(), "service_url") {
 		t.Fatalf("expected missing column error, got %v", err)
+	}
+}
+
+func TestParseResultsRejectsMalformedCSVAndTimestamp(t *testing.T) {
+	for _, test := range []struct {
+		name, csv, want string
+	}{
+		{"malformed CSV", `,result,"unterminated` + "\n", "parse InfluxDB CSV row"},
+		{"invalid timestamp", ",result,table,_time,service_id,service_url,available,status_code,response_time_ms\n,,0,not-a-time,service-a,https://a.test,true,200,15\n", "parse check time"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := parseResults(strings.NewReader(test.csv))
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("parse error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestLatestManyEmptyDoesNotCallInfluxDB(t *testing.T) {
+	client := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("InfluxDB must not be queried for an empty service list")
+		return nil, nil
+	})}
+	results, err := NewInfluxDB(client, "http://influx.test", "org", "bucket", "token").LatestMany(context.Background(), nil)
+	if err != nil || len(results) != 0 {
+		t.Fatalf("results = %+v, error = %v", results, err)
 	}
 }
 

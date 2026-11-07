@@ -69,8 +69,7 @@ func (scheduler *Scheduler) scheduleAt(ctx context.Context, now time.Time) error
 		return fmt.Errorf("publish scheduled jobs: %w", err)
 	}
 	for _, service := range due {
-		interval := time.Duration(service.IntervalSeconds) * time.Second
-		scheduler.nextScheduled[service.ID] = service.ScheduledAt.Add(interval)
+		scheduler.nextScheduled[service.ID] = service.ScheduledAt.Add(scheduler.intervals[service.ID])
 	}
 	return nil
 }

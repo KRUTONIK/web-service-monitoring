@@ -134,6 +134,13 @@ func publishConfirmed(parent context.Context, channel *amqp.Channel, confirms <-
 	if err := channel.PublishWithContext(ctx, "", target, true, false, amqp.Publishing{ContentType: "application/json", DeliveryMode: amqp.Persistent, Headers: headers, Body: body}); err != nil {
 		return err
 	}
+	return waitForNotificationPublication(ctx, confirms, returns, closed, target)
+}
+
+// waitForNotificationPublication waits for the broker's outcome after a
+// message has been published. Keeping this separate makes the confirmation
+// policy independently testable without a RabbitMQ server.
+func waitForNotificationPublication(ctx context.Context, confirms <-chan amqp.Confirmation, returns <-chan amqp.Return, closed <-chan *amqp.Error, target string) error {
 	for {
 		select {
 		case returned, ok := <-returns:
