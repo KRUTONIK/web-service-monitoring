@@ -466,7 +466,7 @@ test('сохраняет настройку уведомлений без отк
   expect(values[1]).toMatchObject({ notifications_enabled: false, enabled: true })
 })
 
-test('сохраняет формы доступными при ошибках создания и изменения', async ({ page }) => {
+test('сохраняет форму создания доступной при ошибке API', async ({ page }) => {
   await mockDashboard(page, { services: [] })
   await page.route('**/api/services', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Не удалось сохранить сервис' }) }))
   await page.goto('/')
@@ -476,6 +476,29 @@ test('сохраняет формы доступными при ошибках �
   await page.getByRole('button', { name: 'Добавить', exact: true }).click()
   await expect(page.getByText('Не удалось сохранить сервис')).toBeVisible()
   await expect(page.getByLabel('Название')).toHaveValue('Новый сервис')
+})
+
+test('сохраняет форму редактирования и карточку при ошибке API', async ({ page }) => {
+  let attempts = 0
+  await mockDashboard(page)
+  await page.route('**/api/services/service-1', (route) => {
+    if (route.request().method() === 'GET') return route.fallback()
+    attempts += 1
+    return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Не удалось изменить сервис' }) })
+  })
+  await page.goto('/')
+  await openService(page)
+  await page.getByRole('button', { name: 'Изменить' }).click()
+  await page.getByLabel('Название').fill('Новое название')
+  await page.getByLabel('URL').fill('changed.example')
+  await page.getByRole('button', { name: 'Сохранить' }).click()
+  await expect(page.getByText('Не удалось изменить сервис')).toBeVisible()
+  await expect(page.getByLabel('Название')).toHaveValue('Новое название')
+  await expect(page.getByLabel('URL')).toHaveValue('changed.example')
+  await expect(page.getByRole('heading', { name: service.name })).toBeVisible()
+  await expect(page.getByText(service.url, { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Сохранить' }).click()
+  await expect.poll(() => attempts).toBe(2)
 })
 
 test('не скрывает сервис и позволяет повторить удаление после ошибки', async ({ page }) => {
