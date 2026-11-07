@@ -320,7 +320,7 @@ test('сохраняет карточку инцидентов при задер
   await expect(card.getByRole('heading', { name: 'Инциденты' })).toBeVisible()
   await expect(card.getByText('Обновление инцидентов…')).toBeVisible()
   release()
-  await expect(card.getByText('Начало: 01.11.2026')).toBeVisible()
+  await expect(card.getByText(/^Начало: 01\.11\.2026, 00:00:00$/)).toBeVisible()
 })
 
 test('показывает устаревший результат как неактуальные данные', async ({ page }) => {
