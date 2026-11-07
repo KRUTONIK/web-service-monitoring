@@ -10,7 +10,7 @@ COMPOSE=(
 
 cleanup() {
     "${COMPOSE[@]}" down -v
-    rm -f "$cookie_jar" "$response_body"
+    rm -f "$cookie_jar" "$cookie_jar_b" "$response_body"
 }
 
 service_id() {
@@ -44,6 +44,7 @@ expect_code() {
 }
 
 cookie_jar=$(mktemp)
+cookie_jar_b=$(mktemp)
 response_body=$(mktemp)
 
 trap cleanup EXIT
@@ -150,6 +151,43 @@ if (result.service_id !== process.argv[2] || result.service_url !== "http://test
   process.exit(1);
 }
 ' "$result" "$service_id" || fail "Получен некорректный результат мониторинга"
+
+echo "Проверка изоляции пользователей..."
+request POST "http://localhost:8080/api/auth/register" \
+    --cookie-jar "$cookie_jar_b" \
+    --header "Origin: http://localhost:5173" \
+    --header "Content-Type: application/json" \
+    --data '{"email":"prototype-test-b@example.test","password":"prototype-test-password"}'
+expect_code 201 "Регистрация второго тестового пользователя"
+
+for endpoint in \
+    "/api/services/${service_id}" \
+    "/api/services/${service_id}/checks" \
+    "/api/services/${service_id}/metrics" \
+    "/api/services/${service_id}/incidents"; do
+    request GET "http://localhost:8080${endpoint}" --cookie "$cookie_jar_b"
+    expect_code 404 "Доступ второго пользователя к чужому сервису ${endpoint}"
+done
+
+request PUT "http://localhost:8080/api/services/${service_id}" \
+    --cookie "$cookie_jar_b" \
+    --header "Origin: http://localhost:5173" \
+    --header "Content-Type: application/json" \
+    --data '{"name":"Чужой сервис","url":"http://test-service","enabled":true,"interval_seconds":60,"timeout_seconds":5}'
+expect_code 404 "Изменение чужого сервиса"
+request DELETE "http://localhost:8080/api/services/${service_id}" \
+    --cookie "$cookie_jar_b" \
+    --header "Origin: http://localhost:5173"
+expect_code 404 "Удаление чужого сервиса"
+
+for endpoint in "/api/services" "/api/monitoring/overview"; do
+    request GET "http://localhost:8080${endpoint}" --cookie "$cookie_jar_b"
+    expect_code 200 "Список второго пользователя ${endpoint}"
+    node -e 'const value = JSON.parse(process.argv[1]); const text = JSON.stringify(value); process.exit(text.includes(process.argv[2]) ? 1 : 0)' "$(<"$response_body")" "$service_id" || fail "Чужой сервис появился в ${endpoint}"
+done
+
+request GET "http://localhost:8080/api/services/${service_id}"
+expect_code 401 "Неавторизованный доступ к сервису"
 
 echo "Проверка Web UI..."
 curl --fail --silent http://localhost:5173/ |
