@@ -33,6 +33,35 @@ request() {
     http_code=$(curl --silent --show-error --output "$response_body" --write-out '%{http_code}' --request "$method" "$@" "$url") || fail "Не удалось выполнить запрос ${method} ${url}"
 }
 
+wait_for_metrics() {
+    local service="$1"
+    local period="$2"
+    for i in {1..30}; do
+        request GET "http://localhost:8080/api/services/${service}/metrics?period=${period}" --cookie "$cookie_jar"
+        if [ "$http_code" = "200" ]; then
+            return
+        fi
+        sleep 1
+    done
+    fail "Показатели ${service} за ${period} не стали доступны"
+}
+
+write_controlled_checks() {
+    local service="$1"
+    local now
+    now=$(node -e 'process.stdout.write(String(Date.now() * 1000000))')
+    local old=$((now - 2 * 60 * 60 * 1000000000))
+    curl --fail --silent --show-error \
+        --header 'Authorization: Token monitoring-test-token' \
+        --header 'Content-Type: text/plain; charset=utf-8' \
+        --data-binary "service_check,job_id=metrics-0,service_id=${service},service_url=http://metrics-fixture available=true,status_code=200i,response_time_ms=0i ${now}
+service_check,job_id=metrics-100,service_id=${service},service_url=http://metrics-fixture available=true,status_code=200i,response_time_ms=100i $((now + 1))
+service_check,job_id=metrics-failure,service_id=${service},service_url=http://metrics-fixture available=false,status_code=503i,response_time_ms=5000i,error=\"upstream failed\" $((now + 2))
+service_check,job_id=metrics-200,service_id=${service},service_url=http://metrics-fixture available=true,status_code=200i,response_time_ms=200i $((now + 3))
+service_check,job_id=metrics-old,service_id=${service},service_url=http://metrics-fixture available=true,status_code=200i,response_time_ms=999i ${old}" \
+        'http://localhost:8086/api/v2/write?org=monitoring&bucket=monitoring&precision=ns'
+}
+
 expect_code() {
     local expected="$1"
     local operation="$2"
@@ -132,7 +161,10 @@ for i in {1..60}; do
         break
     fi
 
-    if [ "$http_code" != "404" ]; then
+    # Metrics can briefly return 502 while the newly started InfluxDB query
+    # path becomes available. The assertion below still requires the actual
+    # check result, so retry both the expected absence and this startup state.
+    if [ "$http_code" != "404" ] && [ "$http_code" != "502" ]; then
         echo "Получен HTTP ${http_code} при запросе результата проверки:" >&2
         cat "$response_body" >&2
         fail "Не удалось получить результат мониторинга"
@@ -188,6 +220,37 @@ done
 
 request GET "http://localhost:8080/api/services/${service_id}"
 expect_code 401 "Неавторизованный доступ к сервису"
+
+echo "Проверка агрегатов и истории InfluxDB..."
+request POST "http://localhost:8080/api/services" \
+    --cookie "$cookie_jar" \
+    --header "Origin: http://localhost:5173" \
+    --header "Content-Type: application/json" \
+    --data '{"name":"Контролируемые метрики","url":"http://metrics-fixture","enabled":false}'
+expect_code 201 "Создание сервиса контролируемых метрик"
+metrics_service_id=$(node -e 'const service = JSON.parse(process.argv[1]); if (!service.id) process.exit(1); process.stdout.write(service.id)' "$(<"$response_body")") || fail "Ответ создания сервиса метрик не содержит идентификатор"
+write_controlled_checks "$metrics_service_id"
+wait_for_metrics "$metrics_service_id" 1h
+node -e '
+const value = JSON.parse(process.argv[1]);
+if (value.total_checks !== 4 || value.successful_checks !== 3 || value.success_rate !== 75 || value.average_response_ms !== 100 || value.p95_response_ms !== 200 || value.has_response_metrics !== true) process.exit(1);
+' "$(<"$response_body")" || fail "Агрегаты InfluxDB за 1h некорректны"
+request GET "http://localhost:8080/api/services/${metrics_service_id}/checks?period=1h&limit=10" --cookie "$cookie_jar"
+expect_code 200 "История контролируемых метрик за 1h"
+node -e 'const value = JSON.parse(process.argv[1]); const times = value.checks.map(check => check.response_time_ms).sort((a,b) => a-b); if (value.checks.length !== 4 || JSON.stringify(times) !== JSON.stringify([0,100,200,5000])) process.exit(1)' "$(<"$response_body")" || fail "История InfluxDB за 1h некорректна"
+wait_for_metrics "$metrics_service_id" 24h
+node -e 'const value = JSON.parse(process.argv[1]); if (value.total_checks !== 5) process.exit(1)' "$(<"$response_body")" || fail "Период 24h не включает историческую проверку"
+
+for fixture in empty failed; do
+    request POST "http://localhost:8080/api/services" --cookie "$cookie_jar" --header "Origin: http://localhost:5173" --header "Content-Type: application/json" --data "{\"name\":\"Метрики ${fixture}\",\"url\":\"http://${fixture}-metrics\",\"enabled\":false}"
+    expect_code 201 "Создание сервиса ${fixture}"
+    fixture_id=$(node -e 'const service = JSON.parse(process.argv[1]); if (!service.id) process.exit(1); process.stdout.write(service.id)' "$(<"$response_body")") || fail "Ответ создания ${fixture} не содержит идентификатор"
+    if [ "$fixture" = "failed" ]; then
+        curl --fail --silent --show-error --header 'Authorization: Token monitoring-test-token' --header 'Content-Type: text/plain; charset=utf-8' --data-binary "service_check,job_id=metrics-failed,service_id=${fixture_id},service_url=http://failed-metrics available=false,status_code=503i,response_time_ms=5000i $(node -e 'process.stdout.write(String(Date.now() * 1000000))')" 'http://localhost:8086/api/v2/write?org=monitoring&bucket=monitoring&precision=ns'
+    fi
+    wait_for_metrics "$fixture_id" 1h
+    node -e 'const value = JSON.parse(process.argv[1]); const expected = Number(process.argv[2]); if (value.total_checks !== expected || value.successful_checks !== 0 || value.has_response_metrics !== false) process.exit(1)' "$(<"$response_body")" "$([ "$fixture" = failed ] && echo 1 || echo 0)" || fail "Пустые/неуспешные показатели ${fixture} некорректны"
+done
 
 echo "Проверка Web UI..."
 curl --fail --silent http://localhost:5173/ |
